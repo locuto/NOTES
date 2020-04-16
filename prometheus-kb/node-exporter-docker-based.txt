@@ -1,0 +1,95 @@
+====================================
+NODE EXPORTER - USING DOCKER IMAGES
+====================================
+
+DOCUMENT/TUTORIAL:
+https://github.com/prometheus/node_exporter
+https://devconnected.com/how-to-install-prometheus-with-docker-on-ubuntu-18-04/
+
+REPOS:
+https://hub.docker.com/r/bitnami/node-exporter/
+https://hub.docker.com/r/prom/node-exporter/
+
+docker pull bitnami/node-exporter
+docker pull prom/node-exporter
+
+=========================
+PREP
+=========================
+Use IP for VM which is in the range of its virtual network's vboxnet network
+- that will help access app URLs with VM IP and port from laptop/host
+
+==========================================
+START NODE EXPORTER CONTAINER - BITNAMI --> DID NOT WORK
+==========================================
+NOTE: THIS DID NOT WORK ALRIGHT
+
+https://github.com/bitnami/bitnami-docker-node-exporter#how-to-use-this-image
+
+https://hub.docker.com/r/bitnami/node-exporter/
+docker run --name node-exporter bitnami/node-exporter:latest
+--> THIS RUNS IT IN FOREGROUND
+
+BACKGROUND RUN AS DAEMON DID NOT WORK - it exited immediately
+docker run --name node-exporter -d bitnami/node-exporter -p 9100:9100
+
+==========================================
+START NODE EXPORTER CONTAINER - PROM
+==========================================
+https://github.com/prometheus/node_exporter
+https://devconnected.com/how-to-install-prometheus-with-docker-on-ubuntu-18-04/
+
+- COMMAND OPTINS EXPLAINED (from https://devconnected.com/how-to-install-prometheus-with-docker-on-ubuntu-18-04/)
+-d: detached mode, will run the node exporter even if we are not directly interacting with it;
+-p: as the node exporter runs on port 9100, we are going to expose this port to Prometheus;
+–user: the node exporter user ID, for security purposes.
+-v: the host filesystem (the machine you are monitoring) is mapped to a folder in the Docker image.
+    (first part before colon is the host's fs -  and second part after the colon is the fs on the container)
+–net: sets the Docker image and the host to share the same network.
+–path.rootfs: instructs the node exporter to look for the filesystem in the hostfs folder. 
+              This way, the Node exporter is not monitoring your Docker filesystem, but the mapped filesystem from your host.
+              
+- COMMAND (not actual command used)
+(from https://github.com/prometheus/node_exporter)
+-- SYNTAX
+docker run -d \
+  --net="host" \
+  --pid="host" \
+  -v "/:/host:ro,rslave" \
+  quay.io/prometheus/node-exporter \
+  --path.rootfs=/host
+
+-- ACTUAL COMMAND - replaced the image with prom/node-exporter
+docker run -d \
+  --net="host" \
+  --pid="host" \
+  -v "/:/host:ro,rslave" \
+  prom/node-exporter \
+  --path.rootfs=/host
+
+- ALTERNATIVE COMMAND
+(from https://devconnected.com/how-to-install-prometheus-with-docker-on-ubuntu-18-04/)
+NOTE: the -p directive is not needed if we use --net=host - you will get the warning message as below
+      - it is automatic that the container's app will listen on host's same ort as container's
+
+NOTE: also, The host networking driver only works on Linux hosts, and is not supported on Docker Desktop for Mac, 
+      Docker Desktop for Windows, or Docker EE for Windows Server.
+      (from https://docs.docker.com/network/host/ )
+      
+NOTE: The --user directive to docker is to make the container run as the user and not root (however, my user is root for now)
+
+docker run -d \
+-p 9100:9100 \
+--user 995:995 \
+-v "/:/hostfs" \
+--net="host" \
+prom/node-exporter \
+--path.rootfs=/hostfs
+
+--> Message from the command
+WARNING: Published ports are discarded when using host network mode
+62e2f57525faca8db46f1b0209e3b6d13dcc904a53a1e1c3ff750e01d44e0ca0
+
+- VERIFY
+ curl http://localhost:9100/health
+ curl http://localhost:9100/metrics

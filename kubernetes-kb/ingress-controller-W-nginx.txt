@@ -1,0 +1,587 @@
+===================================
+NGINX INGRESS CONTROLLER
+===================================
+
+Based on:
+K8's own Nginx ingress (directed by concept doc) 
+https://github.com/kubernetes/ingress-nginx
+https://github.com/kubernetes/ingress-nginx/blob/master/README.md
+https://github.com/kubernetes/ingress-nginx/blob/master/docs/deploy/index.md
+
+To understand: https://github.com/kubernetes/ingress-nginx/blob/master/docs/deploy/baremetal.md
+
+ALSO, for applications and ingress examples:
+https://stackpointcloud.com/community/tutorial/configure-and-manage-a-kubernetes-haproxy-ingress-controller#!
+https://www.haproxy.com/blog/haproxy_ingress_controller_for_kubernetes/
+
+
+ALSO, the other kub community ingress:
+https://github.com/kubernetes/contrib/blob/master/ingress/controllers/nginx/examples/default/rc-default.yaml
+
+Some more:
+https://hackernoon.com/setting-up-nginx-ingress-on-kubernetes-2b733d8d2f45
+
+Concept doc:
+Ingress concept (k8 docs) - https://kubernetes.io/docs/concepts/services-networking/ingress/#what-is-ingress
+
+Other community nginx-ingress:
+https://github.com/kubernetes/contrib/blob/master/ingress/controllers/nginx/examples/default/rc-default.yaml
+
+Nginx Corp ingress controller:
+https://github.com/nginxinc/kubernetes-ingress/blob/master/docs/installation.md
+Note: This is quite elegant - namespace concept etc.
+
+Troubleshoot:
+https://danielfm.me/posts/painless-nginx-ingress.html
+https://github.com/kubernetes/ingress-nginx/issues/411
+
+===================================
+INSTALLATION OF INGRESS CONTOLLER
+===================================
+https://github.com/kubernetes/ingress-nginx/blob/master/docs/deploy/index.md
+
+-----------------
+'MANDATORY' STEP
+-----------------
+- CREATE THE INGRESS CONTROLLER POD (AS DEPLOYMENT)
+# kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/mandatory.yaml
+
+namespace/ingress-nginx created
+configmap/nginx-configuration created
+configmap/tcp-services created
+configmap/udp-services created
+serviceaccount/nginx-ingress-serviceaccount created
+clusterrole.rbac.authorization.k8s.io/nginx-ingress-clusterrole created
+role.rbac.authorization.k8s.io/nginx-ingress-role created
+rolebinding.rbac.authorization.k8s.io/nginx-ingress-role-nisa-binding created
+clusterrolebinding.rbac.authorization.k8s.io/nginx-ingress-clusterrole-nisa-binding created
+deployment.extensions/nginx-ingress-controller created
+
+-----------------
+'BARE METAL' STEP
+-----------------
+- CREATE SERVICE WITH NODEPORT TO ACCESS THE INGRESS CONTROLLER POD
+# kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/provider/baremetal/service-nodeport.yaml
+service/ingress-nginx created
+
+-----------------
+VERIFY
+-----------------
+NOTE: Use the correct namespace or query all-namespaces
+
+# kubectl get pods -o wide --all-namespaces |grep nginx
+ingress-nginx   nginx-ingress-controller-5cd796c58c-q8g2p   1/1     Running            0          135m    192.168.2.56     k02    <none>
+
+# kubectl get svc -o wide --all-namespaces |grep nginx 
+ingress-nginx   ingress-nginx          NodePort    10.111.183.164   <none>        80:31676/TCP,443:30393/TCP   131m    app.kubernetes.io/name=ingress-nginx,app.kubernetes.io/part-of=ingress-nginx
+
+
+- VERIFY ACCESS
+You can see that the ingress-nginx pod is running on k02 node - and has nodeport of 31676
+
+Curl to it will show the 404 page that the pod is programmed to show.
+
+-- HTTP
+# curl http://192.168.11.102:31676
+<html>
+<head><title>404 Not Found</title></head>
+<body>
+<center><h1>404 Not Found</h1></center>
+<hr><center>nginx/1.15.6</center>
+</body>
+</html>
+
+-- HTTPS PORT WITH http://
+# curl http://192.168.11.102:30393
+<html>
+<head><title>400 The plain HTTP request was sent to HTTPS port</title></head>
+<body>
+<center><h1>400 Bad Request</h1></center>
+<center>The plain HTTP request was sent to HTTPS port</center>
+<hr><center>nginx/1.15.6</center>
+</body>
+</html>
+
+-- HTTPS WITH https://
+
+# curl https://192.168.11.102:30393
+curl: (60) Issuer certificate is invalid.
+More details here: http://curl.haxx.se/docs/sslcerts.html
+
+curl performs SSL certificate verification by default, using a "bundle"
+ of Certificate Authority (CA) public keys (CA certs). If the default
+ bundle file isn't adequate, you can specify an alternate file
+ using the --cacert option.
+If this HTTPS server uses a certificate signed by a CA represented in
+ the bundle, the certificate verification probably failed due to a
+ problem with the certificate (it might be expired, or the name might
+ not match the domain name in the URL).
+If you'd like to turn off curl's verification of the certificate, use
+ the -k (or --insecure) option.
+
+
+===================================
+CREATE THE APPLICATION PODS
+===================================
+https://stackpointcloud.com/community/tutorial/configure-and-manage-a-kubernetes-haproxy-ingress-controller#!
+
+------------------------------------------
+CREATE AN APPLICATION TO USE WITH INGRESS
+------------------------------------------
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ONE MAIN APP 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Note: This itself seems to be nginx
+
+- YAML file: echoheaders.yaml
+
+---
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: echoheaders
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: echoheaders
+    spec:
+      containers:
+      - name: echoheaders
+        image: gcr.io/google_containers/echoserver:1.4
+        ports:
+        - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          periodSeconds: 1
+          timeoutSeconds: 1
+          successThreshold: 1
+          failureThreshold: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: echoheaders
+  labels:
+    app: echoheaders
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: echoheaders  
+
+- Test after pod create: 
+# curl  http://192.168.1.88:8080/
+CLIENT VALUES:
+client_address=192.168.1.1
+command=GET
+real path=/
+query=nil
+request_version=1.1
+request_uri=http://192.168.1.88:8080/
+
+SERVER VALUES:
+server_version=nginx: 1.10.0 - lua: 10001
+
+HEADERS RECEIVED:
+accept=*/*
+host=192.168.1.88:8080
+user-agent=curl/7.29.0
+BODY:
+-no body in request-
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+A DEFAULT BACKEND FOR URLS WITHOUT SPECIFIC ENDPOINTS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- YAML file:  default-http-backend.yaml
+
+---
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: default-http-backend
+spec:
+  replicas: 2
+  selector:
+    app: default-http-backend
+  template:
+    metadata:
+      labels:
+        app: default-http-backend
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+      - name: default-http-backend
+        # Any image is permissable as long as:
+        # 1. It serves a 404 page at /
+        # 2. It serves 200 on a /healthz endpoint
+        image: gcr.io/google_containers/defaultbackend:1.0
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+        ports:
+        - containerPort: 8080
+        resources:
+          limits:
+            cpu: 10m
+            memory: 20Mi
+          requests:
+            cpu: 10m
+            memory: 20Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: default-http-backend
+  labels:
+    app: default-http-backend
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: default-http-backend
+
+- Test after pod create: 
+# curl  http://192.168.1.89:8080/
+default backend - 404
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+A STATIC PAGE 'GAME' APP
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- YAML file:  default-http-backend.yaml
+
+---
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: game2048
+  labels:
+    name: game2048
+spec:
+  replicas: 2
+  selector:
+    name: game2048
+  template:
+    metadata:
+      labels:
+        name: game2048
+        version: stable
+    spec:
+      containers:
+      - name: game2048
+        image: alexwhen/docker-2048
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: game2048
+  labels:
+    name: game2048
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    name: game2048
+
+- Test after pod create: 
+# curl  http://192.168.1.90:80/
+...
+...
+This site is the official version of 2048
+...
+...
+===========================
+LIST PODS AND SERVICES
+===========================
+# kubectl get pods -o wide
+NAME                                        READY   STATUS    RESTARTS   AGE     IP             NODE   NOMINATED NODE
+default-http-backend-bnv6c                  1/1     Running   0          12m     192.168.1.89   k01    <none>
+default-http-backend-qrxs8                  1/1     Running   0          12m     192.168.2.51   k02    <none>
+echoheaders-d6spf                           1/1     Running   0          16m     192.168.1.88   k01    <none>
+game2048-2lb9m                              1/1     Running   0          7m20s   192.168.1.90   k01    <none>
+game2048-nn8t7                              1/1     Running   0          7m20s   192.168.2.52   k02    <none>
+nginx-ingress-controller-77c6567795-mb6zr   1/1     Running   0          28s     192.168.2.53   k02    <none>
+
+# kubectl get svc
+NAME                   TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)                      AGE
+default-http-backend   ClusterIP   10.105.17.190    <none>        80/TCP                       12m
+echoheaders            ClusterIP   10.104.129.24    <none>        80/TCP                       16m
+game2048               ClusterIP   10.96.38.41      <none>        80/TCP                       7m25s
+ingress-nginx          NodePort    10.111.237.110   <none>        80:30433/TCP,443:30236/TCP   9s
+kubernetes             ClusterIP   10.96.0.1        <none>        443/TCP                      20d
+
+
+===================================
+CREATE THE INGRESS
+===================================
+
+https://stackpointcloud.com/community/tutorial/configure-and-manage-a-kubernetes-haproxy-ingress-controller#!
+
+-------------------
+INGRESS TO GAME APP
+-------------------
+ingress-to-game.yaml
+
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: game-ingress
+spec:
+  rules:
+  - host: game.domain1.io
+    http:
+      paths:
+      - path:
+        backend:
+          serviceName: game2048
+          servicePort: 80
+          
+That's it. We need now to reach HAPRoxy node using the host header game.domain1.io:
+(NOTE: This site example used haproxy - we are using nginx ingress controller)
+Use your own domain, and point the A record to the HAProxy node's IP address.
+Use curl -H "Host: game.domain1.io" real.server.address
+Install a browser plugin to add host header, like Virtual-Hosts for Chrome.
+
+----------------------------
+INGRESS TO DEFAULT BACKEND
+----------------------------
+ingress-to-default.yaml
+
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: default-http-backend
+spec:
+  backend:
+    serviceName: default-http-backend
+    servicePort: 80
+    
+--------------------------------------------------------
+INGRESS TO ECHOHEADERS APP - WITH MULTIPLE PATHS
+--------------------------------------------------------
+NOTE: For simplicity each path points to the same service - can be different too
+NOTE: This uses a different 'host' attribute
+
+YAML FILE - ingress-to-echoheaders.yml
+
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: echoheaders
+spec:
+  rules:
+  - host: domain2.io
+    http:
+      paths:
+      - path: /path1
+        backend:
+          serviceName: echoheaders
+          servicePort: 80
+      - path: /path2
+        backend:
+          serviceName: echoheaders
+          servicePort: 80
+
+==============================
+ACCESS THE APPS VIA INGRESS
+==============================
+From: https://stackpointcloud.com/community/tutorial/configure-and-manage-a-kubernetes-haproxy-ingress-controller#!
+
+NOTE: The idea is to use the nodeport ports of the ingress pod - which in turn direct traffic to the app pods
+
+-- Access http port's nodeport without 'Host' directive to curl
+
+NOTE: This shows the output of default backend (which is actually a 404 page like below)
+
+# curl http://192.168.11.102:31676
+default backend - 404
+
+-- Access http port's nodeport with 'Host' directive to curl
+# curl -H "Host: game.domain1.io" http://192.168.11.102:31676
+
+...
+...
+This site is the official version of 2048
+...
+...
+
+-- Access http port's nodeport with another 'Host' directive to curl
+# curl -H "Host: domain2.io" http://k02:31676/path1
+
+CLIENT VALUES:
+client_address=192.168.2.0
+command=GET
+real path=/path1
+query=nil
+request_version=1.1
+request_uri=http://domain2.io:8080/path1
+
+SERVER VALUES:
+server_version=nginx: 1.10.0 - lua: 10001
+
+HEADERS RECEIVED:
+accept=*/*
+host=domain2.io
+user-agent=curl/7.29.0
+x-forwarded-for=192.168.2.1
+x-forwarded-host=domain2.io
+x-forwarded-port=80
+x-forwarded-proto=http
+x-original-uri=/path1
+x-real-ip=192.168.2.1
+x-request-id=6d44b7bb7d51f1c8a8d55dd0820f2e5b
+x-scheme=http
+BODY:
+-no body in request-
+
+==============================================================================
+ACCESS METHOD2 - WITH NAME RESOLUTION RATHER THAN -H DIRECTIVE TO CURL
+==============================================================================
+
+Edit /etc/hosts of the master or other node as follows:
+--> that is, add two more lines with same IP as k02 server, but with the two domain names as in the ingresses
+
+192.168.11.102	k02
+192.168.11.102	game.domain1.io
+192.168.11.102	domain2.io
+
+- Then test as follows --> you will get the same results as with -H directive before
+
+# curl http://game.domain1.io
+...
+...
+This site is the official version of 2048
+...
+...
+
+# curl http://domain2.io/path1
+
+CLIENT VALUES:
+client_address=192.168.2.0
+command=GET
+real path=/path1
+query=nil
+request_version=1.1
+request_uri=http://domain2.io:8080/path1
+
+SERVER VALUES:
+server_version=nginx: 1.10.0 - lua: 10001
+
+HEADERS RECEIVED:
+accept=*/*
+host=domain2.io
+user-agent=curl/7.29.0
+x-forwarded-for=192.168.2.1
+x-forwarded-host=domain2.io
+x-forwarded-port=80
+x-forwarded-proto=http
+x-original-uri=/path1
+x-real-ip=192.168.2.1
+x-request-id=6d44b7bb7d51f1c8a8d55dd0820f2e5b
+x-scheme=http
+BODY:
+-no body in request-
+
+==========================
+APPENDIX
+==========================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+== FAILED - DONT USE "short" STEPS OF INGRESS CONTROLLER CREATION
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+SHORT STEPS - AS THE STANDARD STEPS FAILED (SEE FAILED STEPS SECTION BELOW)
+
+~~~~~~~~~
+pod.yaml
+~~~~~~~~~
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: nginx-ingress-controller
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ingress-nginx
+      app.kubernetes.io/part-of: ingress-nginx
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ingress-nginx
+        app.kubernetes.io/part-of: ingress-nginx
+    spec:
+      containers:
+        - name: nginx-ingress-controller
+          image: quay.io/kubernetes-ingress-controller/nginx-ingress-controller:0.21.0
+          args:
+            - /nginx-ingress-controller
+            - --configmap=$(POD_NAMESPACE)/nginx-configuration
+            - --tcp-services-configmap=$(POD_NAMESPACE)/tcp-services
+            - --udp-services-configmap=$(POD_NAMESPACE)/udp-services
+            - --publish-service=$(POD_NAMESPACE)/ingress-nginx
+            - --annotations-prefix=nginx.ingress.kubernetes.io
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          ports:
+            - name: http
+              containerPort: 80
+            - name: https
+              containerPort: 443
+---
+
+~~~~~~~~~
+svc.yaml
+~~~~~~~~~
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingress-nginx
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+    - name: https
+      port: 443
+      targetPort: 443
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/part-of: ingress-nginx
+---

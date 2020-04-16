@@ -1,0 +1,60 @@
+https://tecadmin.net/install-and-configure-haproxy-on-centos/
+
+- INSTALL
+# yum install haproxy
+
+- CONFIG
+Now, edit /etc/haproxy/haproxy.cfg as needed.
+NOTE: Remove the initial comment lines, lines with "@" symbol etc
+
+# ADDED FOR KUBERNETES INGRESS
+frontend kub_nginx
+    bind *:30000
+    default_backend kub_nginx_backend
+
+backend kub_nginx_backend
+    balance     roundrobin
+    server  s1 192.168.11.101:30000 check
+    server  s2 192.168.11.102:30000 check
+
+- START
+# systemctl enable haproxy.service
+Created symlink from /etc/systemd/system/multi-user.target.wants/haproxy.service to /usr/lib/systemd/system/haproxy.service.
+
+# service haproxy start
+Redirecting to /bin/systemctl start haproxy.service
+
+# service haproxy status
+
+- VERIFY
+
+-- CURL HAPROXY MACHINE ITSELF WITH THE CONFIGURED PORT
+--> This should then connect to the Kubernetes (or other) pod/service and get the result
+--> The IP below is the haproxy machine IP
+
+# curl -I http://192.168.11.91:30000
+HTTP/1.1 200 OK
+Server: nginx/1.7.9
+Date: Tue, 11 Dec 2018 06:46:51 GMT
+Content-Type: text/html
+Content-Length: 612
+Last-Modified: Tue, 23 Dec 2014 16:25:09 GMT
+ETag: "54999765-264"
+Accept-Ranges: bytes
+
+While this is being fetched (if it takes some time) do a netstat -anp and you can see it is connecting to the K8 server.
+(Note, in this case both haproxy and k8 have 30000 as port - they can be made different)
+
+# netstat -anp |grep 30000
+tcp        0      0 0.0.0.0:30000           0.0.0.0:*               LISTEN      8928/haproxy        
+tcp        0      1 192.168.11.91:52583     192.168.11.101:30000    SYN_SENT    8928/haproxy  --> k8 node       
+tcp        0      0 192.168.11.91:44816     192.168.11.91:30000     TIME_WAIT   -             --> haproxy machine frontend
+
+This shows connections to multiple backends - IPs 101 and 102 - when two or more curl's are fired
+# netstat -anp |grep 30000
+tcp        0      0 0.0.0.0:30000           0.0.0.0:*               LISTEN      8928/haproxy        
+tcp        0      1 192.168.11.91:63575     192.168.11.102:30000    SYN_SENT    8928/haproxy --> backend2       
+tcp        0      0 192.168.11.91:45815     192.168.11.91:30000     ESTABLISHED 9494/curl    --> haproxy machine frontend   
+tcp        0      1 192.168.11.91:53544     192.168.11.101:30000    SYN_SENT    8928/haproxy --> backend1      
+tcp        0      0 192.168.11.91:45821     192.168.11.91:30000     TIME_WAIT   -            --> haproxy machine frontend   
+tcp        0      0 192.168.11.91:30000     192.168.11.91:45815     ESTABLISHED 8928/haproxy --> haproxy machine frontend

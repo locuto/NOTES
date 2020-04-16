@@ -1,7 +1,164 @@
+Install and small program test - https://golang.org/doc/install?download=go1.12.1.darwin-amd64.pkg
+
+Official docs/sites:
+
+  https://golang.org/doc
+  https://tour.golang.org/flowcontrol/1
+  
+  How to write go code: https://golang.org/doc/code.html ---- READ THIS -----
+  https://golang.org/cmd/go/
+  https://golang.org/pkg/os/exec/ --> ssh command on a remote machine
+   golang.org/x/crypto/ssh
+
+TUTORIAL
+https://golangbot.com/learn-golang-series/ (comp)
+https://www.bogotobogo.com/GoLang/GoLang_HelloWorld.php --> very good series
+https://www.bogotobogo.com/GoLang/GoLang_AWS_SDK_for_Go.php --> with s3 aws sdk
+https://tutorialedge.net/golang/go-waitgroup-tutorial/ - all concepts, redis ...
+
+PLAYGROUND 
+- goplayground
+
+Project/Folder Layout
+- https://github.com/golang-standards/project-layout
+  https://github.com/golang-standards/project-layout/cmd and so on
+- good example
+  https://eli.thegreenplace.net/2019/simple-go-project-layout-with-modules/
+
+Functions - pointer functions (pointer receivers)
+https://www.geeksforgeeks.org/pointers-to-a-function-in-go/
+https://tour.golang.org/methods/4
+
+Cobra & Viper
+https://github.com/spf13/cobra - command generator
+https://github.com/spf13/viper - config file reader, json/consul/yaml reader and such
+
+Modules: go mod:
+To import dependencies - "go modules" - https://github.com/golang/go/wiki/Modules#example
+https://roberto.selbach.ca/intro-to-go-modules/ --> tutorial
+https://github.com/go-modules-by-example
+https://ukiahsmith.com/blog/a-gentle-introduction-to-golang-modules/
+https://medium.com/@adiach3nko/package-management-with-go-modules-the-pragmatic-guide-c831b4eaaf31 --> vendor folder 
+https://go.googlesource.com/proposal/+/master/design/25719-go15vendor.md --> vendor folder
+https://www.reddit.com/r/golang/comments/9ai79z/correct_usage_of_go_modules_vendor_still_connects/ --> vendor folder
+
+Directory structure:
+https://stackoverflow.com/questions/46646559/golang-project-directory-structure
+https://golang.org/doc/code.html
+https://golangbot.com/hello-world/
+
+Postgres:
+https://www.opsdash.com/blog/postgres-arrays-golang.html
+https://medium.com/@beld_pro/postgres-with-golang-3b788d86f2ef
+
+API:
+https://www.codementor.io/codehakase/building-a-restful-api-with-golang-a6yivzqdo
+
+GOPATH:
+https://stackoverflow.com/questions/36017724/can-i-have-multiple-gopath-directories
+
+Docker:
+Build docker image with golang web server - https://levelup.gitconnected.com/complete-guide-to-create-docker-container-for-your-golang-application-80f3fb59a15e
+https://medium.com/@petomalina/using-go-mod-download-to-speed-up-golang-docker-builds-707591336888
+
+Cobra:
+https://ordina-jworks.github.io/development/2018/10/20/make-your-own-cli-with-golang-and-cobra.html - tutorial
+
+Compiling to run on tother os/architecture
+https://stackoverflow.com/questions/48270988/error-with-go-cross-compilation-unsupported-goos-goarch-pair-linux-amd64
+
+Agent, microservice func (a1 *Agent) kind of thing
+https://medium.com/codezillas/building-a-microservice-framework-in-golang-dd3c9530dff9
+
+SSH Commands on remote machine
+
+***https://stackoverflow.com/questions/26434759/golang-execute-shell-commands-on-remote-server
+***--> using another community code  https://github.com/hypersleep/easyssh
+
+https://github.com/golang/crypto/blob/master/ssh/agent/example_test.go --> example
+https://kukuruku.co/post/ssh-commands-execution-on-hundreds-of-servers-via-go/
+https://zaiste.net/executing_commands_via_ssh_using_go/
+https://stackoverflow.com/questions/37679939/how-do-i-execute-a-command-on-a-remote-machine-in-a-golang-cli
+https://stackoverflow.com/questions/24437809/connect-to-a-server-using-ssh-and-a-pem-key-with-golang
+
 REST API using Go - 
 https://www.codementor.io/codehakase/building-a-restful-api-with-golang-a6yivzqdo
-https://thenewstack.io/make-a-restful-json-api-go/
+https://thenewstack.io/make-a-restful-json-api-go/  (with gorilla mux)
 
-Learn:
+Learn/docs:
+https://tour.golang.org/methods/4
+https://golangbot.com/learn-golang-series/
 https://gobyexample.com/arrays
 https://hackernoon.com/basics-of-golang-for-beginners-6bd9b40d79ae
+
+Kubernetes engine using golang:
+https://github.com/DITAS-Project/deployment-engine/blob/master/doc/development.md
+
+Printing HTTP:
+https://stackoverflow.com/questions/38110875/how-to-display-html-string-as-a-web-page-using-golang-http-responsewriter
+
+Run OS Commands:
+https://nathanleclaire.com/blog/2014/12/29/shelled-out-commands-in-golang/
+
+Goroutines and channels:
+https://www.golang-book.com/books/intro/10 --> has channels also
+https://www.geeksforgeeks.org/goroutines-concurrency-in-golang/
+https://gobyexample.com/goroutines
+https://tour.golang.org/concurrency/1
+
+http://codesolid.com/post/optimizing-aws-s3-uploads-with-golang-and-goroutines/ --> with AWS s3
+
+INTERFACES:
+https://www.callicoder.com/golang-interfaces/ - better example
+https://www.geeksforgeeks.org/interfaces-in-golang/
+https://www.geeksforgeeks.org/embedding-interfaces-in-golang/
+
+Interfaces: Empty interfaces, using in function as argument
+https://flaviocopes.com/go-empty-interface/
+
+Interfaces embedding in struct - "type embedding":
+https://travix.io/type-embedding-in-go-ba40dd4264df
+https://www.ardanlabs.com/blog/2015/09/composition-with-go.html --> good blog on embedding
+
+Receivers: like this --> func(i InputType) funcname()
+- Pointer receivers - https://tour.golang.org/methods/4
+- Receiver vs function argument - https://grisha.org/blog/2016/09/22/golang-receiver-vs-function/
+
+JSON:
+- https://www.sohamkamani.com/blog/2017/10/18/parsing-json-in-golang/
+
+TESTING:
+https://ieftimov.com/post/testing-in-go-go-test/
+
+RANDOM STRING GENERATOR:
+https://www.calhoun.io/creating-random-strings-in-go/
+
+HTTP RESPONSE WRITER:
+- Includes JSON: https://medium.com/@vivek_syngh/http-response-in-golang-4ca1b3688d6
+
+GOOD BLOGS - ARDANLABS
+https://www.ardanlabs.com/blog/2020/02/modules-04-mirros-checksums-athens.html - modules
+https://www.ardanlabs.com/blog/2015/09/composition-with-go.html - interfaces
+
+FILE HANDLING
+https://golangbot.com/write-files/
+https://yourbasic.org/golang/read-file-line-by-line/ - also stdin
+https://stackoverflow.com/questions/20895552/how-to-read-from-standard-input-in-the-console - stdin
+
+ARRAYS AND SLICES
+Multidimenstional slices
+- https://forum.golangbridge.org/t/multidimensional-slice/4863
+- https://www.dotnetperls.com/2d-go
+
+Slice with make() function
+- https://www.tutorialspoint.com/go/go_slice.htm
+
+Multidimensional Arrays
+- https://www.tutorialspoint.com/go/go_multi_dimensional_arrays.htm
+- https://www.dotnetperls.com/2d-go
+
+Arrays
+- https://www.tutorialspoint.com/go/go_arrays.htm
+
+Slice - size, increase size, PrintSlice function
+- https://tour.golang.org/moretypes/11

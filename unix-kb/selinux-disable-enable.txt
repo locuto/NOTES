@@ -1,0 +1,30 @@
+=============================================
+ENABLE/DISABLE SELINUX
+=============================================
+
+https://www.tecmint.com/disable-selinux-temporarily-permanently-in-centos-rhel-fedora/
+
+[root@rsyslogsvr elk1]# sestatus
+SELinux status:                 enabled
+SELinuxfs mount:                /sys/fs/selinux
+SELinux root directory:         /etc/selinux
+Loaded policy name:             targeted
+Current mode:                   permissive
+Mode from config file:          permissive
+Policy MLS status:              enabled
+Policy deny_unknown status:     allowed
+Max kernel policy version:      29
+
+Disable SELinux Temporarily
+# echo 0 > /selinux/enforce
+- OR - 
+# setenforce 0
+- OR - 
+# setenforce Permissive
+
+Disable SELinux Permanently
+# vi /etc/sysconfig/selinux
+SELINUX=disabled
+
+# sestatus
+disabled

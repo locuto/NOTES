@@ -1,0 +1,52 @@
+
+https://medium.com/@alombarte/setting-up-a-local-kubernetes-cluster-with-insecure-registries-f5aaa34851ae
+https://stackoverflow.com/questions/43129110/how-can-i-allow-a-private-insecure-registry-to-be-used-inside-a-minikube-node
+
+========================
+MINIKUBE NEEDS FULL PATH???
+========================
+https://stackoverflow.com/questions/49639280/kubernetes-cannot-pull-image-from-private-docker-image-repository
+
+--> FROM THE ABOVE SITE:
+The Problem is with the image name you are mentioning in the POD yaml file.
+
+image: car/configuration:latest
+This will try to pull from the global registry rather than local registry.
+Change the image name to include the repository too.
+image: localhost:5000/car/configuration:latest
+
+And make sure that you have included insecure registry in your docker daemon configuration if your registry is not secured.
+
+========================
+MINIKUBE CONFIG FILE
+========================
+https://github.com/kubernetes/minikube/issues/604
+
+In file: $HOME/.minikube/machines/minikube/config.json
+Add additional registries - first two are there already
+
+            "InsecureRegistry": [
+                "10.96.0.0/12",
+                "192.168.0.53:5000",
+                "local.docker.app1.company.com:443", 
+                "docker.app1.company.com:443"
+            ],
+      
+
+========================
+MINIKUBE START OPTIONS
+========================
+NOTE: For these options to take effect, you should delete minikube and restart it (aka recreate effectively)
+https://github.com/kubernetes/minikube/issues/604
+--> minikube start --vm-driver="xhyve" --insecure-registry="<registry-hostname>:5000"
+--> from docker daemon inside minikube, it appears that you can specify multiple insecure registries:
+ --insecure-registry 10.96.0.0/12 --insecure-registry 192.168.0.53:5000 
+ ExecStart=/usr/bin/dockerd -H tcp://0.0.0.0:2376 -H unix:///var/run/docker.sock --tlsverify --tlscacert /etc/docker/ca.pem --tlscert /etc/docker/server.pem --tlskey /etc/docker/server-key.pem --label provider=virtualbox --insecure-registry 10.96.0.0/12 --insecure-registry 192.168.0.53:5000
+
+EXAMPLE1:
+minikube start --insecure-registry=local.docker.umtx.company.com:443 --insecure-registry=docker.umtx.company.com:443
+
+========================
+MINIKUBE OPTIONS
+========================
+https://medium.com/@alombarte/setting-up-a-local-kubernetes-cluster-with-insecure-registries-f5aaa34851ae

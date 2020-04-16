@@ -1,0 +1,105 @@
+====================================
+GENERATE KEY AND CERTIFICATE
+====================================
+https://gist.github.com/Soarez/9688998 --> openssl key, cert, ca cert
+https://deliciousbrains.com/ssl-certificate-authority-for-local-https-development/ --> ca cert
+https://serverfault.com/questions/366372/is-it-possible-to-generate-rsa-key-without-pass-phrase
+https://stackoverflow.com/questions/10175812/how-to-create-a-self-signed-certificate-with-openssl
+
+1. This generates key and cert without needing passphrase:
+https://serverfault.com/questions/366372/is-it-possible-to-generate-rsa-key-without-pass-phrase
+
+openssl req  -nodes -new -x509  -keyout server.key -out server.cert
+
+2. https://jamielinux.com/docs/openssl-certificate-authority/create-the-root-pair.html
+
+3. https://stackoverflow.com/questions/10175812/how-to-create-a-self-signed-certificate-with-openssl
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365
+
+- or - (looks like this was giving error - as per the site above)
+openssl req -new > cert.csr
+openssl rsa -in privkey.pem -out key.pem
+openssl x509 -in cert.csr -out cert.pem -req -signkey key.pem -days 1001
+cat key.pem>>cert.pem
+
+3a. Additional Notes:
+Add -subj '/CN=localhost' to suppress questions about the contents of the certificate (replace localhost with your desired domain). – Rob W Jun 20 '14 at 21:57
+
+PS. -nodes doesn't mean "nodes" but rather "no DES" – Matt Apr 15 '15 at 19:55
+
+For anyone else using this in automation, here's all of the common parameters for the subject: -subj "/C=US/ST=Oregon/L=Portland/O=Company Name/OU=Org/CN=www.example.com" – Alex S Jun 5 '15 at 18:13 
+
+Remember to use -sha256 to generate SHA-256-based certificate. – Gea-Suan Lin Jan 25 '16 at 6:13
+
+
+==================
+GENERATE CA CERT
+==================
+
+# https://deliciousbrains.com/ssl-certificate-authority-for-local-https-development/
+
+- GENERATE KEY
+NOTE: This asks for a passphrase
+
+# openssl genrsa -des3 -out myCA.key 2048
+
+- GENERATE CERT
+NOTE: This asks for the passphrase entered earlier in key generation
+
+# openssl req -x509 -new -nodes -key myCA.key -sha256 -days 1825 -out myCA.pem
+
+- REMOVE PASSPHRASE FROM KEY
+https://serverfault.com/questions/543385/restarting-nginx-keeps-asking-pem-pass-phrase
+NOTE: Provide the same passphrase entered earlier in key generation
+
+# openssl rsa -in myCA.key.withPassPhrase -out myCA.key
+
+==================
+MISCELLANEOUS
+==================
+http://serverfault.com/questions/151157/ubuntu-10-04-curl-how-do-i-fix-update-the-ca-bundle
+  download a package of CA-certs ready for curl on ubuntu directly from the curl dev site.
+  
+  cd /etc/ssl/certs
+  sudo wget http://curl.haxx.se/ca/cacert.pem
+  
+  sudo update-ca-certificates
+
+=======
+How to check if tls is supprted or not:  https://serverfault.com/questions/638691/how-can-i-verify-if-tls-1-2-is-supported-on-a-remote-web-server-from-the-rhel-ce
+
+
+down vote
+accepted
+You should use openssl s_client, and the option you are looking for is -tls1_2.
+
+An example command would be:
+
+openssl s_client -connect google.com:443 -tls1_2
+
+If you get the certificate chain and the handshake you know the system in question supports TLS 1.2. If you see don't see the certificate chain, and something similar to "handshake error" you know it does not support TLS 1.2. You can also test for TLS 1 or TLS 1.1 with -tls1 or tls1_1 respectively.
+
+nmap --script ssl-enum-ciphers -p 443 www.example.com
+And then check the output. If it's supported you'll get something like this:
+
+|   TLSv1.2: 
+|     ciphers: 
+|       TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA - strong
+|       TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA - strong
+|       TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256 - strong
+|       TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 - strong
+|       TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA - strong
+|       TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384 - strong
+|       TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 - strong
+|       TLS_ECDHE_RSA_WITH_RC4_128_SHA - strong
+|       TLS_RSA_WITH_3DES_EDE_CBC_SHA - strong
+|       TLS_RSA_WITH_AES_128_CBC_SHA - strong
+|       TLS_RSA_WITH_AES_128_CBC_SHA256 - strong
+|       TLS_RSA_WITH_AES_128_GCM_SHA256 - strong
+|       TLS_RSA_WITH_AES_256_CBC_SHA - strong
+|       TLS_RSA_WITH_AES_256_CBC_SHA256 - strong
+|       TLS_RSA_WITH_AES_256_GCM_SHA384 - strong
+|       TLS_RSA_WITH_RC4_128_MD5 - strong
+|       TLS_RSA_WITH_RC4_128_SHA - strong
+|     compressors: 
+|       NULL

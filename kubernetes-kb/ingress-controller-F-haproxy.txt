@@ -1,0 +1,42 @@
+================================================
+INGRESS CONTROLLER
+================================================
+
+USING HAPROXY AS INGRESS CONTROLLER (NOT THE EXTERNAL LOAD BALANCER)
+https://www.haproxy.com/blog/haproxy_ingress_controller_for_kubernetes/ --> Main reference
+https://stackpointcloud.com/community/tutorial/configure-and-manage-a-kubernetes-haproxy-ingress-controller#!
+https://github.com/jcmoraisjr/haproxy-ingress
+
+USING NGINX AS INGRESS CONTROLLER
+
+Read this first:
+https://www.nginx.com/blog/nginx-plus-ingress-controller-kubernetes-load-balancing/
+--> https://www.nginx.com/blog/load-balancing-kubernetes-services-nginx-plus/  (HOW TO)
+--> --> https://www.nginx.com/blog/deploying-nginx-nginx-plus-docker/ (building docker image first)
+--> OFFICIAL NGINX COMPANY IMPLEMENTATION - https://github.com/nginxinc/kubernetes-ingress/ (both nginx and nginx+ combined into one controller)
+--> https://www.nginx.com/products/nginx/kubernetes-ingress-controller/
+
+https://github.com/nginxinc/kubernetes-ingress
+--> https://github.com/nginxinc/kubernetes-ingress/tree/master/examples/complete-example (after installation)
+-->--> https://github.com/nginxinc/kubernetes-ingress/blob/master/docs/installation.md (installation)
+
+These did not work - the controller pod kept crashing.
+KUBERNETES COMMUNITY - https://github.com/kubernetes/contrib/tree/master/ingress/controllers/nginx
+(directed from https://stackpointcloud.com/community/tutorial/configure-and-manage-a-kubernetes-haproxy-ingress-controller#!)
+--> https://github.com/kubernetes/contrib/tree/fbb1430dbec659c81b8a0f7492d14f7caeab7505/ingress/controllers/nginx/examples/proxy-protocol
+(two worker kubernetes cluster, haproxy LB outside of the nodes, with NGINX running on the node ports)
+
+KUBERNETES COMMUNITY -  https://github.com/kubernetes/ingress-nginx ???
+(from https://kubernetes.io/docs/concepts/services-networking/ingress/)
+
+nginx-ingress keeps crashing - https://serverfault.com/questions/912425/nginx-ingress-controller-crashes-every-few-days
+
+GENERAL DOCS
+https://kubernetes.io/docs/concepts/services-networking/ingress/
+--> https://github.com/kubernetes/ingress-nginx/blob/master/README.md (NGINX)
+--> https://github.com/jcmoraisjr/haproxy-ingress (HAPROXY)
+
+https://medium.com/google-cloud/kubernetes-nodeport-vs-loadbalancer-vs-ingress-when-should-i-use-what-922f010849e0
+
+External IP:
+https://kubernetes.io/docs/tutorials/stateless-application/expose-external-ip-address/

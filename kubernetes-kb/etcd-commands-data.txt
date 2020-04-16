@@ -1,0 +1,134 @@
+http://cloud-mechanic.blogspot.com/2014/09/kubernetes-under-hood-etcd.html
+
+$ curl http://etcd-hostname:2379/v2/stats/self
+
+curl -s -L http://127.0.0.1:2379/v2/stats/self | python -m json.tool
+{
+    "leaderInfo": {
+        "leader": "myhost",
+        "startTime": "2014-09-23T10:37:04.839453766-04:00",
+        "uptime": "5h10m13.053046076s"
+    },
+    "name": "myhost",
+    "recvAppendRequestCnt": 0,
+    "sendAppendRequestCnt": 0,
+    "startTime": "2014-09-23T10:37:04.83945236-04:00",
+    "state": ""
+}
+
+# curl -s http://localhost:2379/v2/keys
+{"action":"get","node":{"dir":true}}
+
+# curl -s http://localhost:2379/v2/keys | python -m json.tool
+{
+    "action": "get",
+    "node": {
+        "dir": true
+    }
+}
+
+# ./etcdctl set /foo/bar/gronk "I see you"
+I see you
+
+# ./etcdctl ls /
+/foo
+
+# curl -s http://127.0.0.1:4001/v2/keys/ | python -m json.tool
+{
+    "action": "get",
+    "node": {
+        "dir": true,
+        "key": "/",
+        "nodes": [
+            {
+                "createdIndex": 7,
+                "dir": true,
+                "key": "/foo",
+                "modifiedIndex": 7
+            }
+        ]
+    }
+}
+
+# curl -s http://127.0.0.1:4001/v2/keys/fiddle/faddle -XPUT -d value="popcorn" | python -m json.tool
+{
+    "action": "set",
+    "node": {
+        "createdIndex": 8,
+        "key": "/fiddle/faddle",
+        "modifiedIndex": 8,
+        "value": "popcorn"
+    }
+}
+
+# ./etcdctl ls / --recursive
+
+curl -s http://127.0.0.1:4001/v2/keys/?recursive=true| python -m json.tool
+{
+    "action": "get",
+    "node": {
+        "dir": true,
+        "key": "/",
+        "nodes": [
+            {
+                "createdIndex": 7,
+                "dir": true,
+                "key": "/foo",
+                "modifiedIndex": 7,
+                "nodes": [
+                    {
+                        "createdIndex": 7,
+                        "dir": true,
+                        "key": "/foo/bar",
+                        "modifiedIndex": 7,
+                        "nodes": [
+                            {
+                                "createdIndex": 7,
+                                "key": "/foo/bar/gronk",
+                                "modifiedIndex": 7,
+                                "value": "I see you"
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "createdIndex": 8,
+                "dir": true,
+                "key": "/fiddle",
+                "modifiedIndex": 8,
+                "nodes": [
+                    {
+                        "createdIndex": 8,
+                        "key": "/fiddle/faddle",
+                        "modifiedIndex": 8,
+                        "value": "popcorn"
+                    }
+                ]
+            }
+        ]
+    }
+}
+
+The root of the Kubernetes data tree within the etcd database is /registry. Let's see what's there.
+
+./etcdctl ls /registry --recursive
+/registry/services
+/registry/services/specs
+/registry/services/specs/db
+/registry/services/specs/msg
+/registry/services/endpoints
+/registry/services/endpoints/db
+/registry/services/endpoints/msg
+/registry/pods
+/registry/pods/pulpdb
+/registry/pods/pulpmsg
+/registry/pods/pulp-beat
+/registry/pods/pulp-resource-manager
+/registry/hosts
+/registry/hosts/10.245.2.3
+/registry/hosts/10.245.2.3/kubelet
+/registry/hosts/10.245.2.4
+/registry/hosts/10.245.2.4/kubelet
+/registry/hosts/10.245.2.2
+/registry/hosts/10.245.2.2/kubelet

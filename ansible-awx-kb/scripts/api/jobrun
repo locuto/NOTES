@@ -1,0 +1,15 @@
+# example
+#curl -k -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -X POST  -d '{}' https://tower/api/v2/job_templates/5/launch/
+
+# Without inventory (when inventory is already embedded in the job template)
+#curl -k -H "Authorization: Bearer abcdef" -H "Content-Type: application/json" -X GET  -d '{}' https://110.160.151.4/api/v2/job_templates/57/launch/
+curl -k -H "Authorization: Bearer abcdef" -H "Content-Type: application/json" -X POST  -d '{}' https://110.160.151.4/api/v2/job_templates/57/launch/
+
+# With inventory - when job template does not have inventory
+curl -k -H "Authorization: Bearer abcdef" -H "Content-Type: application/json" -X POST  -d '{"inventory":"15"}' https://110.160.151.4/api/v2/job_templates/58/launch/
+
+# With one extra variable
+curl -k -H "Authorization: Bearer abcdef" -H "Content-Type: application/json" -X POST -d '{"job_type":"run","inventory":"26","limit":"110.160.51.40","job_tags":"master","extra_vars":"---\nfull_reroll: \"yes\""}' https://110.160.151.4/api/v2/job_templates/60/launch/
+
+# With multiple extra variables
+curl -k -H "Authorization: Bearer abcdef" -H "Content-Type: application/json" -X POST -d '{"job_type":"run","inventory":"16","limit":"110.165.71.203","job_tags":"worker","extra_vars":"---\nfull_reroll: \"yes\"\nroll_batch: 1"}' https://110.160.151.4/api/v2/job_templates/60/launch/

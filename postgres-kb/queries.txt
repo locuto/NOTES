@@ -1,0 +1,64 @@
+https://www.postgresqltutorial.com/postgresql-administration/
+https://www.postgresqltutorial.com/postgresql-create-table/
+https://stackoverflow.com/questions/31433747/postgres-where-clause-compare-timestamp
+
+============
+LIST TABLES
+============
+https://www.postgresqltutorial.com/postgresql-show-tables/
+
+psql> \dt
+
+
+psql> SELECT
+   *
+FROM
+   pg_catalog.pg_tables
+WHERE
+   schemaname != 'pg_catalog'
+AND schemaname != 'information_schema';
+
+================
+DESCRIBE TABLES
+================
+
+psql> \d the_table_name
+
+psql> select * from metrics FETCH FIRST 5 ROW ONLY;
+
+====================
+COMPARE DATES/TIMES
+====================
+
+-------------------------------------------------
+Datatype: Timestamp with (or without) Timezone
+-------------------------------------------------
+select *
+from the_table
+where the_timestamp_column::date = date '2015-07-15';
+
+select *
+from the_table
+where the_timestamp_column >= timestamp '2015-07-15 00:00:00'
+  and the_timestamp_column < timestamp '2015-07-16 00:00:00';
+
+- https://stackoverflow.com/questions/19469154/how-to-compare-dates-in-datetime-fields-in-postgresql
+select * from table 
+where update_date::date >= '2013-05-03' AND update_date::date <= '2013-05-04' ; (per site, both are same date 2013-05-03??)
+
+select *
+from table
+where
+    update_date
+    <@
+    tsrange('2013-05-03', '2013-05-03'::date + 1, '[)');
+If the user enters timestamps then you don't need the ::date + 1 part
+
+- https://intellipaat.com/community/11582/how-to-compare-dates-in-datetime-fields-in-postgresql
+
+select * from table where update_date >= '2013-05-03' AND update_date <= '2013-05-04' -> results found
+select * from table where update_date >= '2013-05-03' -> results found
+SELECT *
+FROM table
+WHERE update_date >= '2013-05-03'::date
+AND update_date < ('2013-05-03'::date + '1 day'::interval);

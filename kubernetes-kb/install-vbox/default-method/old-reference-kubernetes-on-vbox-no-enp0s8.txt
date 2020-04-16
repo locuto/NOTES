@@ -1,0 +1,1246 @@
+=================================
+KUBERNETES CLUSTER ON LINUX
+=================================
+BASED MAINLY ON - https://www.techrepublic.com/article/how-to-install-a-kubernetes-cluster-on-centos-7/
+and https://linuxthegreat.wordpress.com/2017/10/17/installing-kubernetes-1-8-1-on-centos-7/
+
+Official docs:
+https://kubernetes.io/docs/setup/independent/install-kubeadm/ --> Install software
+https://kubernetes.io/docs/setup/independent/create-cluster-kubeadm/  --> Create/init master, flannel and add nodes
+https://kubernetes.io/docs/setup/independent/high-availability/
+
+- fix links
+cni0 not up on node1 - 
+https://stackoverflow.com/questions/42380762/kubernetes-flannel-network-does-not-work-as-expected
+https://stackoverflow.com/questions/50861748/worker-node-joins-kuhttps://kubernetes.io/docs/setup/independent/create-cluster-kubeadm/bernetes-cluster-with-flannel-does-not-have-cni0-created
+https://github.com/coreos/flannel/issues/1039
+
+- NEXT
+1. (see if cni0 comes up correctly with this):
+   Redo everything from scratch, with pod-network-cidr as 192.168.0.0 instead of 192.168.11.0
+	gherasima • 2 months ago
+	For flannel to work correctly, you must pass --pod-network-cidr=10.244.0.0/16 to kubeadm init
+
+2. Create nginx pod as in the article
+
+=========================================
+INFO
+=========================================
+
+CONFIG FILE DIRECTORY STRUCTURE
+https://github.com/kubernetes/kubeadm/issues/368
+
+/etc/kubernetes/
+├── admin.conf
+├── controller-manager.conf
+├── kubelet.conf
+├── manifests
+│   ├── etcd.yaml
+│   ├── kube-apiserver.yaml
+│   ├── kube-controller-manager.yaml
+│   └── kube-scheduler.yaml
+├── pki
+│   ├── apiserver.crt
+│   ├── apiserver.key
+│   ├── apiserver-kubelet-client.crt
+│   ├── apiserver-kubelet-client.key
+│   ├── ca.crt
+│   ├── ca.key
+│   ├── front-proxy-ca.crt
+│   ├── front-proxy-ca.key
+│   ├── front-proxy-client.crt
+│   ├── front-proxy-client.key
+│   ├── sa.key
+│   └── sa.pub
+└── scheduler.conf
+
+=========================================
+SET UP MASTER (or, rather, first master)
+=========================================
+
+---------------------------------
+HOSTNAME AND IP SETUP
+---------------------------------
+For Kubernetes: (set IPs matching this or vice-versa)
+NOTE: Changing cidr to 192.168.0.0 (instead of 192.168.11.0 as directed in main web article)
+--apiserver-advertise-address=192.168.11.200 --pod-network-cidr=192.168.0.0/16
+
+# hostnamectl set-hostname kubemaster0
+Set IP for = enp0s8 192.168.11.200 netmask 255.255.255.0
+Set IP for = enp0s8 192.168.12.200 netmask 255.255.255.0
+
+Add main IP to /etc/hosts
+127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+192.168.11.200 kubemaster0
+::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+
+Restart the machine and ensure hostname and IPs show up.
+# hostname
+# ifconfig enp0s8
+# ifconfig enp0s9
+
+---------------------------------
+DISABLE SELINUX
+---------------------------------
+# setenforce 0
+
+Edit the file /etc/sysconfig/selinux and set enforcing as disabled
+
+---------------------------------
+DISABLE SWAP
+---------------------------------
+# swapoff -a
+
+Edit /etc/fstab and comment out line of swap
+#/dev/mapper/ol-swap     swap                    swap    defaults        0 0
+
+---------------------------------
+ENABLE br_netfilter
+---------------------------------
+# modprobe br_netfilter
+# echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
+
+Also, put it in /etc/sysctl.conf as follows:
+net.bridge.bridge-nf-call-iptables = 1
+
+And, make it persistent:
+# sysctl -p
+
+---------------------------------------
+INSTALL DOCKER-CE (community edition)
+---------------------------------------
+- FIRST INSTALL CONTAINER-SELINUX > v2.9
+http://mirror.centos.org/centos/7/extras/x86_64/Packages/container-selinux-2.68-1.el7.noarch.rpm
+
+- INSTALL DOCKER
+Check, and install if needed - dependencies with the following command:
+# yum install -y yum-utils device-mapper-persistent-data lvm2
+
+Next, add the Docker-ce repository with the command:
+# yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+
+Install Docker-ce with the command:
+# yum install -y docker-ce
+
+- ENABLE DOCKER SERVICE
+# systemctl enable docker
+
+- START DOCKER
+# service docker start
+
+- CHECK CGROUP
+# docker info | grep -i cgroup
+Cgroup Driver: cgroupfs
+
+---------------------------------------
+INSTALL KUBERNETES
+---------------------------------------
+- Create yum repo
+Create file: /etc/yum.repos.d/kubernetes.repo
+With content:
+[kubernetes]
+name=Kubernetes
+baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg
+        https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+        
+- INSTALL KUBERNETES kubeadm, kubelet, kubectl
+# yum install -y kubelet kubeadm kubectl
+
+This will install the following in /usr/bin
+-rwxr-xr-x.   1 root root     19254448 Oct  8 06:14 crictl
+-rwxr-xr-x.   1 root root    117744864 Oct 27 07:40 kubelet
+-rwxr-xr-x.   1 root root     39895144 Oct 27 07:40 kubectl
+-rwxr-xr-x.   1 root root     37171264 Oct 27 07:40 kubeadm
+-rwxr-xr-x.   1 root root       389560 Aug  2  2017 socat
+
+- ALSO, IT WILL CREATE SYSTEMD FILES FOR KUBELET
+# cd /etc/systemd/system/
+# ls -ld kub*
+-rw-r--r--. 1 root root 222 Oct 27 07:40 kubelet.service
+drwxr-xr-x. 2 root root  29 Nov 26 11:05 kubelet.service.d
+
+-- SCREEN OUTPUT
+[root@kubemaster0 kubeinstall]# yum install -y kubelet kubeadm kubectl
+Loaded plugins: langpacks, ulninfo
+kubernetes/signature                                                                |  454 B  00:00:00     
+Retrieving key from https://packages.cloud.google.com/yum/doc/yum-key.gpg
+Importing GPG key 0xA7317B0F:
+ Userid     : "Google Cloud Packages Automatic Signing Key <gc-team@google.com>"
+ Fingerprint: d0bc 747f d8ca f711 7500 d6fa 3746 c208 a731 7b0f
+ From       : https://packages.cloud.google.com/yum/doc/yum-key.gpg
+Retrieving key from https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+kubernetes/signature                                                                | 1.4 kB  00:00:00 !!! 
+kubernetes/primary                                                                  |  38 kB  00:00:02     
+kubernetes                                                                                         275/275
+Resolving Dependencies
+--> Running transaction check
+---> Package kubeadm.x86_64 0:1.12.2-0 will be installed
+--> Processing Dependency: kubernetes-cni >= 0.6.0 for package: kubeadm-1.12.2-0.x86_64
+--> Processing Dependency: cri-tools >= 1.11.0 for package: kubeadm-1.12.2-0.x86_64
+---> Package kubectl.x86_64 0:1.12.2-0 will be installed
+---> Package kubelet.x86_64 0:1.12.2-0 will be installed
+--> Processing Dependency: socat for package: kubelet-1.12.2-0.x86_64
+--> Running transaction check
+---> Package cri-tools.x86_64 0:1.12.0-0 will be installed
+---> Package kubernetes-cni.x86_64 0:0.6.0-0 will be installed
+---> Package socat.x86_64 0:1.7.3.2-2.el7 will be installed
+--> Finished Dependency Resolution
+
+Dependencies Resolved
+
+===========================================================================================================
+ Package                     Arch                Version                     Repository               Size
+===========================================================================================================
+Installing:
+ kubeadm                     x86_64              1.12.2-0                    kubernetes              7.2 M
+ kubectl                     x86_64              1.12.2-0                    kubernetes              7.7 M
+ kubelet                     x86_64              1.12.2-0                    kubernetes               19 M
+Installing for dependencies:
+ cri-tools                   x86_64              1.12.0-0                    kubernetes              4.2 M
+ kubernetes-cni              x86_64              0.6.0-0                     kubernetes              8.6 M
+ socat                       x86_64              1.7.3.2-2.el7               ol7_latest              289 k
+
+Transaction Summary
+===========================================================================================================
+Install  3 Packages (+3 Dependent packages)
+
+Total download size: 47 M
+Installed size: 237 M
+Downloading packages:
+warning: /var/cache/yum/x86_64/7Server/kubernetes/packages/53edc739a0e51a4c17794de26b13ee5df939bd3161b37f503fe2af8980b41a89-cri-tools-1.12.0-0.x86_64.rpm: Header V4 RSA/SHA512 Signature, key ID 3e1ba8d5: NOKEY
+Public key for 53edc739a0e51a4c17794de26b13ee5df939bd3161b37f503fe2af8980b41a89-cri-tools-1.12.0-0.x86_64.rpm is not installed
+(1/6): 53edc739a0e51a4c17794de26b13ee5df939bd3161b37f503fe2af8980b41a89-cri-tools-1 | 4.2 MB  00:00:06     
+(2/6): 6bd058ff754287c0b6b7431ee8f08bd35af40b0b1d098d94acf1448de0c8053b-kubeadm-1.1 | 7.2 MB  00:00:09     
+(3/6): ead06eb2dc5ff86ca39823fa5f9e944b2f197e681b76ea0ba4a72f5ca6c51f32-kubectl-1.1 | 7.7 MB  00:00:03     
+(4/6): socat-1.7.3.2-2.el7.x86_64.rpm                                               | 289 kB  00:00:03     
+(5/6): fe33057ffe95bfae65e2f269e1b05e99308853176e24a4d027bc082b471a07c0-kubernetes- | 8.6 MB  00:00:04     
+(6/6): c2c59cf03fa14b8d91026c94d63c877091d54ae8492ee3f49faa7aeccd5cac3f-kubelet-1.1 |  19 MB  00:00:12     
+-----------------------------------------------------------------------------------------------------------
+Total                                                                      2.1 MB/s |  47 MB  00:00:22     
+Retrieving key from https://packages.cloud.google.com/yum/doc/yum-key.gpg
+Importing GPG key 0xA7317B0F:
+ Userid     : "Google Cloud Packages Automatic Signing Key <gc-team@google.com>"
+ Fingerprint: d0bc 747f d8ca f711 7500 d6fa 3746 c208 a731 7b0f
+ From       : https://packages.cloud.google.com/yum/doc/yum-key.gpg
+Retrieving key from https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+Importing GPG key 0x3E1BA8D5:
+ Userid     : "Google Cloud Packages RPM Signing Key <gc-team@google.com>"
+ Fingerprint: 3749 e1ba 95a8 6ce0 5454 6ed2 f09c 394c 3e1b a8d5
+ From       : https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+Running transaction check
+Running transaction test
+Transaction test succeeded
+Running transaction
+  Installing : kubectl-1.12.2-0.x86_64                                                                 1/6 
+  Installing : socat-1.7.3.2-2.el7.x86_64                                                              2/6 
+  Installing : kubernetes-cni-0.6.0-0.x86_64                                                           3/6 
+  Installing : kubelet-1.12.2-0.x86_64                                                                 4/6 
+  Installing : cri-tools-1.12.0-0.x86_64                                                               5/6 
+  Installing : kubeadm-1.12.2-0.x86_64                                                                 6/6 
+  Verifying  : kubeadm-1.12.2-0.x86_64                                                                 1/6 
+  Verifying  : cri-tools-1.12.0-0.x86_64                                                               2/6 
+  Verifying  : kubelet-1.12.2-0.x86_64                                                                 3/6 
+  Verifying  : kubernetes-cni-0.6.0-0.x86_64                                                           4/6 
+  Verifying  : socat-1.7.3.2-2.el7.x86_64                                                              5/6 
+  Verifying  : kubectl-1.12.2-0.x86_64                                                                 6/6 
+
+Installed:
+  kubeadm.x86_64 0:1.12.2-0          kubectl.x86_64 0:1.12.2-0          kubelet.x86_64 0:1.12.2-0         
+
+Dependency Installed:
+  cri-tools.x86_64 0:1.12.0-0      kubernetes-cni.x86_64 0:0.6.0-0      socat.x86_64 0:1.7.3.2-2.el7     
+
+Complete!
+
+----------------------
+NETWORK AT THIS POINT
+----------------------
+
+- ROUTES
+# route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+0.0.0.0         10.0.2.2        0.0.0.0         UG    100    0        0 enp0s3
+10.0.2.0        0.0.0.0         255.255.255.0   U     100    0        0 enp0s3
+172.17.0.0      0.0.0.0         255.255.0.0     U     0      0        0 docker0
+192.168.11.0    0.0.0.0         255.255.255.0   U     101    0        0 enp0s8
+192.168.12.0    0.0.0.0         255.255.255.0   U     102    0        0 enp0s9
+192.168.122.0   0.0.0.0         255.255.255.0   U     0      0        0 virbr0
+
+# ip route
+default via 10.0.2.2 dev enp0s3 proto dhcp metric 100 
+10.0.2.0/24 dev enp0s3 proto kernel scope link src 10.0.2.15 metric 100 
+172.17.0.0/16 dev docker0 proto kernel scope link src 172.17.0.1 
+192.168.11.0/24 dev enp0s8 proto kernel scope link src 192.168.11.100 metric 101 
+192.168.12.0/24 dev enp0s9 proto kernel scope link src 192.168.12.100 metric 102 
+192.168.122.0/24 dev virbr0 proto kernel scope link src 192.168.122.1 
+
+- IPs
+# ip addr list 
+(showing the docker ip only here)
+7: docker0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default 
+    link/ether 02:42:e4:75:99:36 brd ff:ff:ff:ff:ff:ff
+    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0
+       valid_lft forever preferred_lft forever
+
+----------------------
+BACKUP THE VM/MACHINE
+----------------------
+AT THIS POINT - BACKUP/CLONE THE VM - IF YOU ARE DOING THIS ON VM'S
+--> THIS BACKUP CAN BE CLONED TO NODES - as nodes require docker and kube software installed so far
+
+---------------------------------------
+MASTER: KUBEADM INIT ('CGroup Changes' in the web article)
+---------------------------------------
+Now we need to ensure that both Docker-ce and Kubernetes belong to the same control group (cgroup). 
+By default, Docker should already belong to cgroupfs (you can check this with the command docker info | grep -i cgroup). 
+# docker info | grep -i cgroup
+Cgroup Driver: cgroupfs
+
+NOTE: The standard steps from the web article did not work - refer to the following sections for more details:
+KUBELET STANDARD STEPS
+KUBELET INITIAL START - ERROR FIX EXERCISE
+
+REVISED STEPS:
+- Remove config files from /etc/kubernetes
+- Enable kubelet service
+# systemctl enable kubelet.service
+- Enable Docker
+# systemctl enable docker.service
+- Start Docker
+# service docker start
+- Run kubeadm init with the following command:  
+# echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables
+# cat /proc/sys/net/bridge/bridge-nf-call-iptables
+1
+
+--> Use this command with two '0's for CIDR IP as per main documentation
+For flannel to work correctly, you must pass --pod-network-cidr=X.X.0.0/16 to kubeadm init.
+(https://kubernetes.io/docs/setup/independent/create-cluster-kubeadm/)
+# kubeadm init --apiserver-advertise-address=192.168.11.200 --pod-network-cidr=192.168.0.0/16 --ignore-preflight-errors=all
+
+--> This command with CIDR with one '0' in the IP (as in the main web-article) did not seem to work for Flannel
+# kubeadm init --apiserver-advertise-address=192.168.11.200 --pod-network-cidr=192.168.11.0/16 --ignore-preflight-errors=all
+
+THIS WORKED, AND ALSO STARTED KUBLET AND API-SERVER (see the outputs and some processe, file in appendix)
+
+- After this init, start kubelet (IF IT DID NOT START)
+# service kubelet start
+
+AT THIS TIME THIS NODE IS SET UP AS MASTER - but pods are not running or something...
+--> EXCEPT THAT OVERLAY NETWORK LIKE FLANNEL IS NOT SETUP
+--> ETCD, KUBE-PROXY, KUBE-APISERVER etc ARE RUNNING AS CONTAINERS (IMAGES PULLED BY KUBEADM INIT)
+--> KUBE-APISERVER IS THE THING THAT MAKES THIS A MASTER
+
+TBD TBD TBD
+However, /var/log/messages still keep showing this message:
+Nov 26 15:57:02 kubemaster0 kubelet: W1126 15:57:02.576897    2280 cni.go:188] Unable to update cni config: No networks found in /etc/cni/net.d
+Nov 26 15:57:02 kubemaster0 kubelet: E1126 15:57:02.577050    2280 kubelet.go:2167] Container runtime network not ready: NetworkReady=false reason:NetworkPluginNotReady message:docker: network plugin is not ready: cni config uninitialized
+Nov 26 15:57:07 kubemaster0 kubelet: W1126 15:57:07.583476    2280 cni.go:188] Unable to update cni config: No networks found in /etc/cni/net.d
+Nov 26 15:57:07 kubemaster0 kubelet: E1126 15:57:07.583587    2280 kubelet.go:2167] Container runtime network not ready: NetworkReady=false reason:NetworkPluginNotReady message:docker: network plugin is not ready: cni config uninitialized
+
+-------------------------------------
+SET KUBECONFIG FOR ROOT
+-------------------------------------
+Option1: Without environment variable
+# mkdir /root/.kube
+# cp /etc/kubernetes/admin.conf /root/.kube/config
+
+Option2: With environment variable
+# export KUBECONFIG=/etc/kubernetes/admin.conf
+
+-------------------------------------------
+IF ADDING NODES DO IT NOW - before FLANNEL
+-------------------------------------------
+Steps TBD 
+TBD - get the token and discovery_token from kubeadm screen output on master
+
+# systemctl enable kubelet.service
+# echo 1 > /proc/sys/net/bridge/bridge-nf-call-iptables
+# cat /proc/sys/net/bridge/bridge-nf-call-iptables
+1
+
+Next command:
+(THIS COMMAND IS FOR KUBE0 master based cluster - change IP and token as required)
+# kubeadm join 192.168.11.100:6443 --token 4q9ls2.lq4n3n8pruedn8ly --discovery-token-ca-cert-hash sha256:80ed28cf7358e2c22db1a2ff87c3bfd4e71a5019c094e77265136b804e4def04 --ignore-preflight-errors=all
+
+-- OUTPUT from kube1
+[root@kube1 ~]# kubeadm join 192.168.11.100:6443 --token 4q9ls2.lq4n3n8pruedn8ly --discovery-token-ca-cert-hash sha256:80ed28cf7358e2c22db1a2ff87c3bfd4e71a5019c094e77265136b804e4def04 --ignore-preflight-errors=all
+[preflight] running pre-flight checks
+	[WARNING RequiredIPVSKernelModulesAvailable]: the IPVS proxier will not be used, because the following required kernel modules are not loaded: [ip_vs ip_vs_rr ip_vs_wrr ip_vs_sh] or no builtin kernel ipvs support: map[ip_vs:{} ip_vs_rr:{} ip_vs_wrr:{} ip_vs_sh:{} nf_conntrack_ipv4:{}]
+you can solve this problem with following methods:
+ 1. Run 'modprobe -- ' to load missing kernel modules;
+2. Provide the missing builtin kernel ipvs support
+
+[preflight] The system verification failed. Printing the output from the verification:
+KERNEL_VERSION: 4.1.12-112.16.4.el7uek.x86_64
+CONFIG_NAMESPACES: enabled
+CONFIG_NET_NS: enabled
+CONFIG_PID_NS: enabled
+CONFIG_IPC_NS: enabled
+CONFIG_UTS_NS: enabled
+CONFIG_CGROUPS: enabled
+CONFIG_CGROUP_CPUACCT: enabled
+CONFIG_CGROUP_DEVICE: enabled
+CONFIG_CGROUP_FREEZER: enabled
+CONFIG_CGROUP_SCHED: enabled
+CONFIG_CPUSETS: enabled
+CONFIG_MEMCG: enabled
+CONFIG_INET: enabled
+CONFIG_EXT4_FS: enabled (as module)
+CONFIG_PROC_FS: enabled
+CONFIG_NETFILTER_XT_TARGET_REDIRECT: enabled (as module)
+CONFIG_NETFILTER_XT_MATCH_COMMENT: enabled (as module)
+CONFIG_OVERLAY_FS: enabled (as module)
+CONFIG_AUFS_FS: not set - Required for aufs.
+CONFIG_BLK_DEV_DM: enabled (as module)
+DOCKER_VERSION: 18.09.0
+OS: Linux
+CGROUPS_CPU: enabled
+CGROUPS_CPUACCT: enabled
+CGROUPS_CPUSET: enabled
+CGROUPS_DEVICES: enabled
+CGROUPS_FREEZER: enabled
+CGROUPS_MEMORY: enabled
+	[WARNING SystemVerification]: unsupported docker version: 18.09.0
+[discovery] Trying to connect to API Server "192.168.11.100:6443"
+[discovery] Created cluster-info discovery client, requesting info from "https://192.168.11.100:6443"
+[discovery] Requesting info from "https://192.168.11.100:6443" again to validate TLS against the pinned public key
+[discovery] Cluster info signature and contents are valid and TLS certificate validates against pinned roots, will use API Server "192.168.11.100:6443"
+[discovery] Successfully established connection with API Server "192.168.11.100:6443"
+[kubelet] Downloading configuration for the kubelet from the "kubelet-config-1.12" ConfigMap in the kube-system namespace
+[kubelet] Writing kubelet configuration to file "/var/lib/kubelet/config.yaml"
+[kubelet] Writing kubelet environment file with flags to file "/var/lib/kubelet/kubeadm-flags.env"
+[preflight] Activating the kubelet service
+[tlsbootstrap] Waiting for the kubelet to perform the TLS Bootstrap...
+[patchnode] Uploading the CRI Socket information "/var/run/dockershim.sock" to the Node API object "kube1" as an annotation
+
+This node has joined the cluster:
+* Certificate signing request was sent to apiserver and a response was received.
+* The Kubelet was informed of the new secure connection details.
+
+Run 'kubectl get nodes' on the master to see this node join the cluster.
+
+-- OUTPUT from kube2
+rt-hash sha256:80ed28cf7358e2c22db1a2ff87c3bfd4e71a5019c094e77265136b804e4def04 --ignore-preflight-errors=all
+[preflight] running pre-flight checks
+	[WARNING RequiredIPVSKernelModulesAvailable]: the IPVS proxier will not be used, because the following required kernel modules are not loaded: [ip_vs_wrr ip_vs_sh ip_vs ip_vs_rr] or no builtin kernel ipvs support: map[ip_vs_wrr:{} ip_vs_sh:{} nf_conntrack_ipv4:{} ip_vs:{} ip_vs_rr:{}]
+you can solve this problem with following methods:
+ 1. Run 'modprobe -- ' to load missing kernel modules;
+2. Provide the missing builtin kernel ipvs support
+
+[preflight] The system verification failed. Printing the output from the verification:
+KERNEL_VERSION: 4.1.12-112.16.4.el7uek.x86_64
+CONFIG_NAMESPACES: enabled
+CONFIG_NET_NS: enabled
+CONFIG_PID_NS: enabled
+CONFIG_IPC_NS: enabled
+CONFIG_UTS_NS: enabled
+CONFIG_CGROUPS: enabled
+CONFIG_CGROUP_CPUACCT: enabled
+CONFIG_CGROUP_DEVICE: enabled
+CONFIG_CGROUP_FREEZER: enabled
+CONFIG_CGROUP_SCHED: enabled
+CONFIG_CPUSETS: enabled
+CONFIG_MEMCG: enabled
+CONFIG_INET: enabled
+CONFIG_EXT4_FS: enabled (as module)
+CONFIG_PROC_FS: enabled
+CONFIG_NETFILTER_XT_TARGET_REDIRECT: enabled (as module)
+CONFIG_NETFILTER_XT_MATCH_COMMENT: enabled (as module)
+CONFIG_OVERLAY_FS: enabled (as module)
+CONFIG_AUFS_FS: not set - Required for aufs.
+CONFIG_BLK_DEV_DM: enabled (as module)
+DOCKER_VERSION: 18.09.0
+OS: Linux
+CGROUPS_CPU: enabled
+CGROUPS_CPUACCT: enabled
+CGROUPS_CPUSET: enabled
+CGROUPS_DEVICES: enabled
+CGROUPS_FREEZER: enabled
+CGROUPS_MEMORY: enabled
+	[WARNING SystemVerification]: unsupported docker version: 18.09.0
+[discovery] Trying to connect to API Server "192.168.11.100:6443"
+[discovery] Created cluster-info discovery client, requesting info from "https://192.168.11.100:6443"
+[discovery] Requesting info from "https://192.168.11.100:6443" again to validate TLS against the pinned public key
+[discovery] Cluster info signature and contents are valid and TLS certificate validates against pinned roots, will use API Server "192.168.11.100:6443"
+[discovery] Successfully established connection with API Server "192.168.11.100:6443"
+[kubelet] Downloading configuration for the kubelet from the "kubelet-config-1.12" ConfigMap in the kube-system namespace
+[kubelet] Writing kubelet configuration to file "/var/lib/kubelet/config.yaml"
+[kubelet] Writing kubelet environment file with flags to file "/var/lib/kubelet/kubeadm-flags.env"
+[preflight] Activating the kubelet service
+[tlsbootstrap] Waiting for the kubelet to perform the TLS Bootstrap...
+[patchnode] Uploading the CRI Socket information "/var/run/dockershim.sock" to the Node API object "kube2" as an annotation
+
+This node has joined the cluster:
+* Certificate signing request was sent to apiserver and a response was received.
+* The Kubelet was informed of the new secure connection details.
+
+Run 'kubectl get nodes' on the master to see this node join the cluster.
+
+-- PROCESSES ON NODES
+
+---- KUBELET
+# ps -ef|grep kubelet
+root      4362     1  1 17:39 ?        00:00:05 /usr/bin/kubelet --bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf --kubeconfig=/etc/kubernetes/kubelet.conf --config=/var/lib/kubelet/config.yaml --cgroup-driver=cgroupfs --network-plugin=cni
+root      5144  3186  0 17:44 pts/0    00:00:00 grep --color=auto kubelet
+
+---- KUBE-PROXY
+# docker ps
+CONTAINER ID        IMAGE                   COMMAND                  CREATED             STATUS              PORTS               NAMES
+b3605bb2bbea        k8s.gcr.io/kube-proxy   "/usr/local/bin/kube…"   4 minutes ago       Up 4 minutes                            k8s_kube-proxy_kube-proxy-rnf5t_kube-system_2d6c8f7d-f174-11e8-8b20-080027104420_0
+ce3d545e60bf        k8s.gcr.io/pause:3.1    "/pause"                 5 minutes ago       Up 5 minutes                            k8s_POD_kube-proxy-rnf5t_kube-system_2d6c8f7d-f174-11e8-8b20-080027104420_0
+
+---- NO ETCD, KUBE-APISERVER
+
+-------------------------------
+VERIFY - ON MASTER NODE (if child nodes are installed)
+-------------------------------
+# kubectl get nodes
+NAME    STATUS     ROLES    AGE     VERSION
+kube0   NotReady   master   35m     v1.12.2 --> only this should show if only master existed
+kube1   NotReady   <none>   81s     v1.12.2
+kube2   NotReady   <none>   3m24s   v1.12.2
+
+-------------------------------
+INSTALL FLANNEL OVERLAY NETWORK (run on master)
+-------------------------------
+NOTE: Ensure that KUBECONFIG environment variable is setup 
+      (or have /etc/kubernetes/admin.conf is copied to file /root/.kube/config). 
+      Otherwise local:8080 not reachable error will come.
+      
+Create .kube and config file in it
+# mkdir -p /root/.kube
+# cp /etc/kubernetes/admin.conf /root/.kube/config
+
+On Master and Nodes: (Not sure if this is really necessary...)
+# echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
+
+On Master:
+# kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+clusterrole.rbac.authorization.k8s.io/flannel created
+clusterrolebinding.rbac.authorization.k8s.io/flannel created
+serviceaccount/flannel created
+configmap/kube-flannel-cfg created
+daemonset.extensions/kube-flannel-ds-amd64 created
+daemonset.extensions/kube-flannel-ds-arm64 created
+daemonset.extensions/kube-flannel-ds-arm created
+daemonset.extensions/kube-flannel-ds-ppc64le created
+daemonset.extensions/kube-flannel-ds-s390x created
+
+
+------------------------------
+!!!!! NOW IT IS READY !!!!!
+------------------------------
+# kubectl get nodes
+NAME          STATUS   ROLES    AGE   VERSION
+kubemaster0   Ready    master   97m   v1.12.2 --> if only master was installed
+
+---- CHECK ROUTES AND IP ON MASTER - IN ONE-MACHINE CONFIGURATION
+- ROUTES (on master)
+# route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+0.0.0.0         10.0.2.2        0.0.0.0         UG    100    0        0 enp0s3
+10.0.2.0        0.0.0.0         255.255.255.0   U     100    0        0 enp0s3
+172.17.0.0      0.0.0.0         255.255.0.0     U     0      0        0 docker0
+192.168.0.0     0.0.0.0         255.255.255.0   U     0      0        0 cni0
+192.168.11.0    0.0.0.0         255.255.255.0   U     101    0        0 enp0s8
+192.168.12.0    0.0.0.0         255.255.255.0   U     102    0        0 enp0s9
+192.168.122.0   0.0.0.0         255.255.255.0   U     0      0        0 virbr0
+
+- IPs
+# ip addr list
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default 
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host 
+       valid_lft forever preferred_lft forever
+2: enp0s3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group default qlen 1000
+    link/ether 08:00:27:10:44:20 brd ff:ff:ff:ff:ff:ff
+    inet 10.0.2.15/24 brd 10.0.2.255 scope global noprefixroute dynamic enp0s3
+       valid_lft 83546sec preferred_lft 83546sec
+    inet6 fe80::2481:bef7:e0d6:5810/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+3: enp0s8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group default qlen 1000
+    link/ether 08:00:27:7b:13:15 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.11.200/24 brd 192.168.11.255 scope global noprefixroute enp0s8
+       valid_lft forever preferred_lft forever
+    inet6 fe80::93b2:25a2:764f:15da/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+    inet6 fe80::586b:16f6:5398:2b74/64 scope link tentative noprefixroute dadfailed 
+       valid_lft forever preferred_lft forever
+    inet6 fe80::5270:6f3b:6966:ad14/64 scope link tentative noprefixroute dadfailed 
+       valid_lft forever preferred_lft forever
+4: enp0s9: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group default qlen 1000
+    link/ether 08:00:27:ca:34:38 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.12.200/24 brd 192.168.12.255 scope global noprefixroute enp0s9
+       valid_lft forever preferred_lft forever
+    inet6 fe80::4346:3130:3b1b:7fbb/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+    inet6 fe80::29:9987:4fcf:641c/64 scope link tentative noprefixroute dadfailed 
+       valid_lft forever preferred_lft forever
+    inet6 fe80::b331:1d54:d60b:62c1/64 scope link tentative noprefixroute dadfailed 
+       valid_lft forever preferred_lft forever
+5: docker0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default 
+    link/ether 02:42:1d:c9:21:87 brd ff:ff:ff:ff:ff:ff
+    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0
+       valid_lft forever preferred_lft forever
+6: virbr0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default 
+    link/ether 52:54:00:cc:ab:31 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.122.1/24 brd 192.168.122.255 scope global virbr0
+       valid_lft forever preferred_lft forever
+7: virbr0-nic: <BROADCAST,MULTICAST> mtu 1500 qdisc pfifo_fast master virbr0 state DOWN group default qlen 500
+    link/ether 52:54:00:cc:ab:31 brd ff:ff:ff:ff:ff:ff
+8: flannel.1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UNKNOWN group default 
+    link/ether ee:92:7d:88:3a:ba brd ff:ff:ff:ff:ff:ff
+    inet 192.168.0.0/32 scope global flannel.1
+       valid_lft forever preferred_lft forever
+    inet6 fe80::ec92:7dff:fe88:3aba/64 scope link 
+       valid_lft forever preferred_lft forever
+9: cni0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UP group default 
+    link/ether 0a:58:c0:a8:00:01 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.0.1/24 scope global cni0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::4c10:34ff:feca:bf89/64 scope link 
+       valid_lft forever preferred_lft forever
+10: veth614c5368@if3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue master cni0 state UP group default 
+    link/ether 76:71:ed:63:74:e0 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet6 fe80::7471:edff:fe63:74e0/64 scope link 
+       valid_lft forever preferred_lft forever
+11: veth579cba47@if3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue master cni0 state UP group default 
+    link/ether 7a:b6:09:e8:a4:d0 brd ff:ff:ff:ff:ff:ff link-netnsid 1
+    inet6 fe80::78b6:9ff:fee8:a4d0/64 scope link 
+       valid_lft forever preferred_lft forever
+
+# bridge fdb show dev flannel.1
+ca:35:7c:57:e1:80 dst 10.0.2.15 self permanent
+ca:e1:0b:22:8b:5c dst 10.0.2.15 self permanent
+
+
+-- CHECK IP AND ROUTES ON MULTI MACHINE WITH ONE MASTER
+Note:  TBD - this is mostly a problem: CNI0 is not on master.  Node2 was joined before Node1. CNI0 is on Node2
+
+Pods (run command from master
+[root@kube0 ~]# kubectl -n kube-system get pods
+NAME                            READY   STATUS    RESTARTS   AGE
+coredns-576cbf47c7-lvf7m        1/1     Running   19         3h20m
+coredns-576cbf47c7-lvg72        1/1     Running   19         3h20m
+etcd-kube0                      1/1     Running   1          3h19m
+kube-apiserver-kube0            1/1     Running   1          3h19m
+kube-controller-manager-kube0   1/1     Running   1          3h20m
+kube-flannel-ds-amd64-9s8ms     1/1     Running   0          160m
+kube-flannel-ds-amd64-r85s9     1/1     Running   1          160m
+kube-flannel-ds-amd64-x4kml     1/1     Running   0          160m
+kube-proxy-2dd8q                1/1     Running   0          166m
+kube-proxy-r7dk2                1/1     Running   1          3h20m
+kube-proxy-rnf5t                1/1     Running   1          168m
+kube-scheduler-kube0            1/1     Running   1          3h19m
+
+
+Master
+[root@kube0 ~]# route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+0.0.0.0         10.0.2.2        0.0.0.0         UG    100    0        0 enp0s3
+10.0.2.0        0.0.0.0         255.255.255.0   U     100    0        0 enp0s3
+172.17.0.0      0.0.0.0         255.255.0.0     U     0      0        0 docker0
+192.168.1.0     192.168.1.0     255.255.255.0   UG    0      0        0 flannel.1
+192.168.2.0     192.168.2.0     255.255.255.0   UG    0      0        0 flannel.1
+192.168.11.0    0.0.0.0         255.255.255.0   U     101    0        0 enp0s8
+192.168.12.0    0.0.0.0         255.255.255.0   U     102    0        0 enp0s9
+192.168.122.0   0.0.0.0         255.255.255.0   U     0      0        0 virbr0
+
+Node1
+# route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+0.0.0.0         10.0.2.2        0.0.0.0         UG    100    0        0 enp0s3
+10.0.2.0        0.0.0.0         255.255.255.0   U     100    0        0 enp0s3
+172.17.0.0      0.0.0.0         255.255.0.0     U     0      0        0 docker0
+192.168.0.0     192.168.0.0     255.255.255.0   UG    0      0        0 flannel.1
+192.168.1.0     0.0.0.0         255.255.255.0   U     0      0        0 cni0
+192.168.2.0     192.168.2.0     255.255.255.0   UG    0      0        0 flannel.1
+192.168.11.0    0.0.0.0         255.255.255.0   U     101    0        0 enp0s8
+192.168.12.0    0.0.0.0         255.255.255.0   U     102    0        0 enp0s9
+192.168.122.0   0.0.0.0         255.255.255.0   U     0      0        0 virbr0
+
+Node2
+# route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+0.0.0.0         10.0.2.2        0.0.0.0         UG    100    0        0 enp0s3
+10.0.2.0        0.0.0.0         255.255.255.0   U     100    0        0 enp0s3
+172.17.0.0      0.0.0.0         255.255.0.0     U     0      0        0 docker0
+192.168.0.0     192.168.0.0     255.255.255.0   UG    0      0        0 flannel.1
+192.168.1.0     192.168.1.0     255.255.255.0   UG    0      0        0 flannel.1
+192.168.2.0     0.0.0.0         255.255.255.0   U     0      0        0 cni0
+192.168.11.0    0.0.0.0         255.255.255.0   U     101    0        0 enp0s8
+192.168.12.0    0.0.0.0         255.255.255.0   U     102    0        0 enp0s9
+192.168.122.0   0.0.0.0         255.255.255.0   U     0      0        0 virbr0
+
+Master
+[root@k0 k8]# bridge fdb show dev flannel.1
+ca:35:7c:57:e1:80 dst 10.0.2.15 self permanent
+ca:e1:0b:22:8b:5c dst 10.0.2.15 self permanent
+[root@k0 k8]# ip route
+default via 10.0.2.2 dev enp0s3 proto dhcp metric 100 
+10.0.2.0/24 dev enp0s3 proto kernel scope link src 10.0.2.15 metric 100 
+172.17.0.0/16 dev docker0 proto kernel scope link src 172.17.0.1 
+192.168.1.0/24 via 192.168.1.0 dev flannel.1 onlink 
+192.168.2.0/24 via 192.168.2.0 dev flannel.1 onlink 
+192.168.11.0/24 dev enp0s8 proto kernel scope link src 192.168.11.10 metric 101 
+192.168.12.0/24 dev enp0s9 proto kernel scope link src 192.168.12.10 metric 102 
+192.168.122.0/24 dev virbr0 proto kernel scope link src 192.168.122.1 
+ 
+
+Node1
+[root@k1 ~]# bridge fdb show dev flannel.1
+ca:35:7c:57:e1:80 dst 10.0.2.15 self permanent
+06:de:89:12:00:00 dst 10.0.2.15 self permanent
+
+[root@k1 ~]# route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+0.0.0.0         10.0.2.2        0.0.0.0         UG    100    0        0 enp0s3
+10.0.2.0        0.0.0.0         255.255.255.0   U     100    0        0 enp0s3
+172.17.0.0      0.0.0.0         255.255.0.0     U     0      0        0 docker0
+192.168.0.0     192.168.0.0     255.255.255.0   UG    0      0        0 flannel.1
+192.168.1.0     0.0.0.0         255.255.255.0   U     0      0        0 cni0
+192.168.2.0     192.168.2.0     255.255.255.0   UG    0      0        0 flannel.1
+192.168.11.0    0.0.0.0         255.255.255.0   U     101    0        0 enp0s8
+192.168.12.0    0.0.0.0         255.255.255.0   U     102    0        0 enp0s9
+192.168.122.0   0.0.0.0         255.255.255.0   U     0      0        0 virbr0
+
+
+
+Node2
+[root@k2 ~]# bridge fdb show dev flannel.1
+06:de:89:12:00:00 dst 10.0.2.15 self permanent
+ca:e1:0b:22:8b:5c dst 10.0.2.15 self permanent
+
+[root@k2 ~]# route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+0.0.0.0         10.0.2.2        0.0.0.0         UG    100    0        0 enp0s3
+10.0.2.0        0.0.0.0         255.255.255.0   U     100    0        0 enp0s3
+172.17.0.0      0.0.0.0         255.255.0.0     U     0      0        0 docker0
+192.168.0.0     192.168.0.0     255.255.255.0   UG    0      0        0 flannel.1
+192.168.1.0     192.168.1.0     255.255.255.0   UG    0      0        0 flannel.1
+192.168.2.0     0.0.0.0         255.255.255.0   U     0      0        0 cni0
+192.168.11.0    0.0.0.0         255.255.255.0   U     101    0        0 enp0s8
+192.168.12.0    0.0.0.0         255.255.255.0   U     102    0        0 enp0s9
+192.168.122.0   0.0.0.0         255.255.255.0   U     0      0        0 virbr0
+
+Master
+8: flannel.1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UNKNOWN group default 
+    link/ether f2:57:94:27:86:63 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.0.0/32 scope global flannel.1
+       valid_lft forever preferred_lft forever
+    inet6 fe80::f057:94ff:fe27:8663/64 scope link 
+       valid_lft forever preferred_lft forever
+
+
+Node1
+8: flannel.1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UNKNOWN group default 
+    link/ether a6:67:3a:6f:83:0c brd ff:ff:ff:ff:ff:ff
+    inet 192.168.2.0/32 scope global flannel.1
+       valid_lft forever preferred_lft forever
+    inet6 fe80::a467:3aff:fe6f:830c/64 scope link 
+       valid_lft forever preferred_lft forever
+       
+9: cni0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UP group default 
+    link/ether 0a:58:c0:a8:01:01 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.1.1/24 scope global cni0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::e4e9:baff:fe74:7269/64 scope link 
+       valid_lft forever preferred_lft forever
+
+Node2
+# ip addr list
+8: flannel.1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UNKNOWN group default 
+    link/ether b2:6b:7c:7a:6a:4c brd ff:ff:ff:ff:ff:ff
+    inet 192.168.1.0/32 scope global flannel.1
+       valid_lft forever preferred_lft forever
+    inet6 fe80::b06b:7cff:fe7a:6a4c/64 scope link 
+       valid_lft forever preferred_lft forever
+       
+9: cni0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UP group default 
+    link/ether 0a:58:c0:a8:01:01 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.1.1/24 scope global cni0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::6828:9fff:fe76:90d8/64 scope link 
+       valid_lft forever preferred_lft forever
+
+------------------------------
+CREATE A CLIENT USER
+------------------------------
+More from https://linuxthegreat.wordpress.com/2017/10/17/installing-kubernetes-1-8-1-on-centos-7/
+
+[root@kubemaster0 ~]# useradd kube
+[root@kubemaster0 ~]# su - kube
+
+[kube@kubemaster0 ~]$ mkdir .kube
+
+[kube@kubemaster0 ~]$ pwd
+/home/kube
+[kube@kubemaster0 ~]$ exit
+logout
+
+-- Without environment variable (elegant)
+# cp /etc/kubernetes/admin.conf /home/kube/.kube/config
+# cd /home/kube/.kube
+# chown kube:kube config
+
+-- With environment variable (not elegant)
+[root@kubemaster0 ~]# cp /etc/kubernetes/admin.conf /home/kube/.kube/.
+[root@kubemaster0 ~]# cd /home/kube/.kube
+[root@kubemaster0 .kube]# ls -l
+total 8
+-rw------- 1 root root 5454 Nov 26 15:43 admin.conf
+[root@kubemaster0 .kube]# chown kube:kube admin.conf
+[root@kubemaster0 .kube]# ls -l
+total 8
+-rw------- 1 kube kube 5454 Nov 26 15:43 admin.conf
+$ export KUBECONFIG=$HOME/.kube/admin.conf
+
+- CHECK NOW
+$ kubectl get nodes
+NAME          STATUS   ROLES    AGE    VERSION
+kubemaster0   Ready    master   100m   v1.12.2
+
+
+=================================================
+APPENDIX - OUTPUTS AND FILES AFTER KUBEADM INIT
+=================================================
+----
+OUTPUT OF KUBEADM INIT
+----
+[root@kubemaster0 kubeinstall]# kubeadm init --apiserver-advertise-address=192.168.11.200 --pod-network-cidr=192.168.11.0/16 --ignore-preflight-errors=all
+[init] using Kubernetes version: v1.12.2
+[preflight] running pre-flight checks
+[preflight] The system verification failed. Printing the output from the verification:
+KERNEL_VERSION: 4.1.12-112.16.4.el7uek.x86_64
+CONFIG_NAMESPACES: enabled
+CONFIG_NET_NS: enabled
+CONFIG_PID_NS: enabled
+CONFIG_IPC_NS: enabled
+CONFIG_UTS_NS: enabled
+CONFIG_CGROUPS: enabled
+CONFIG_CGROUP_CPUACCT: enabled
+CONFIG_CGROUP_DEVICE: enabled
+CONFIG_CGROUP_FREEZER: enabled
+CONFIG_CGROUP_SCHED: enabled
+CONFIG_CPUSETS: enabled
+CONFIG_MEMCG: enabled
+CONFIG_INET: enabled
+CONFIG_EXT4_FS: enabled (as module)
+CONFIG_PROC_FS: enabled
+CONFIG_NETFILTER_XT_TARGET_REDIRECT: enabled (as module)
+CONFIG_NETFILTER_XT_MATCH_COMMENT: enabled (as module)
+CONFIG_OVERLAY_FS: enabled (as module)
+CONFIG_AUFS_FS: not set - Required for aufs.
+CONFIG_BLK_DEV_DM: enabled (as module)
+DOCKER_VERSION: 18.09.0
+OS: Linux
+CGROUPS_CPU: enabled
+CGROUPS_CPUACCT: enabled
+CGROUPS_CPUSET: enabled
+CGROUPS_DEVICES: enabled
+CGROUPS_FREEZER: enabled
+CGROUPS_MEMORY: enabled
+	[WARNING SystemVerification]: unsupported docker version: 18.09.0
+	[WARNING Service-Kubelet]: kubelet service is not enabled, please run 'systemctl enable kubelet.service'
+[preflight/images] Pulling images required for setting up a Kubernetes cluster
+[preflight/images] This might take a minute or two, depending on the speed of your internet connection
+[preflight/images] You can also perform this action in beforehand using 'kubeadm config images pull'
+[kubelet] Writing kubelet environment file with flags to file "/var/lib/kubelet/kubeadm-flags.env"
+[kubelet] Writing kubelet configuration to file "/var/lib/kubelet/config.yaml"
+[preflight] Activating the kubelet service
+[certificates] Generated ca certificate and key.
+[certificates] Generated apiserver certificate and key.
+[certificates] apiserver serving cert is signed for DNS names [kubemaster0 kubernetes kubernetes.default kubernetes.default.svc kubernetes.default.svc.cluster.local] and IPs [10.96.0.1 192.168.11.200]
+[certificates] Generated apiserver-kubelet-client certificate and key.
+[certificates] Generated front-proxy-ca certificate and key.
+[certificates] Generated front-proxy-client certificate and key.
+[certificates] Generated etcd/ca certificate and key.
+[certificates] Generated etcd/server certificate and key.
+[certificates] etcd/server serving cert is signed for DNS names [kubemaster0 localhost] and IPs [127.0.0.1 ::1]
+[certificates] Generated etcd/peer certificate and key.
+[certificates] etcd/peer serving cert is signed for DNS names [kubemaster0 localhost] and IPs [192.168.11.200 127.0.0.1 ::1]
+[certificates] Generated etcd/healthcheck-client certificate and key.
+[certificates] Generated apiserver-etcd-client certificate and key.
+[certificates] valid certificates and keys now exist in "/etc/kubernetes/pki"
+[certificates] Generated sa key and public key.
+[kubeconfig] Wrote KubeConfig file to disk: "/etc/kubernetes/admin.conf"
+[kubeconfig] Wrote KubeConfig file to disk: "/etc/kubernetes/kubelet.conf"
+[kubeconfig] Wrote KubeConfig file to disk: "/etc/kubernetes/controller-manager.conf"
+[kubeconfig] Wrote KubeConfig file to disk: "/etc/kubernetes/scheduler.conf"
+[controlplane] wrote Static Pod manifest for component kube-apiserver to "/etc/kubernetes/manifests/kube-apiserver.yaml"
+[controlplane] wrote Static Pod manifest for component kube-controller-manager to "/etc/kubernetes/manifests/kube-controller-manager.yaml"
+[controlplane] wrote Static Pod manifest for component kube-scheduler to "/etc/kubernetes/manifests/kube-scheduler.yaml"
+[etcd] Wrote Static Pod manifest for a local etcd instance to "/etc/kubernetes/manifests/etcd.yaml"
+[init] waiting for the kubelet to boot up the control plane as Static Pods from directory "/etc/kubernetes/manifests" 
+[init] this might take a minute or longer if the control plane images have to be pulled
+[apiclient] All control plane components are healthy after 22.502511 seconds
+[uploadconfig] storing the configuration used in ConfigMap "kubeadm-config" in the "kube-system" Namespace
+[kubelet] Creating a ConfigMap "kubelet-config-1.12" in namespace kube-system with the configuration for the kubelets in the cluster
+[markmaster] Marking the node kubemaster0 as master by adding the label "node-role.kubernetes.io/master=''"
+[markmaster] Marking the node kubemaster0 as master by adding the taints [node-role.kubernetes.io/master:NoSchedule]
+[patchnode] Uploading the CRI Socket information "/var/run/dockershim.sock" to the Node API object "kubemaster0" as an annotation
+[bootstraptoken] using token: ewknz0.wxv1extttmyx3fb7
+[bootstraptoken] configured RBAC rules to allow Node Bootstrap tokens to post CSRs in order for nodes to get long term certificate credentials
+[bootstraptoken] configured RBAC rules to allow the csrapprover controller automatically approve CSRs from a Node Bootstrap Token
+[bootstraptoken] configured RBAC rules to allow certificate rotation for all node client certificates in the cluster
+[bootstraptoken] creating the "cluster-info" ConfigMap in the "kube-public" namespace
+[addons] Applied essential addon: CoreDNS
+[addons] Applied essential addon: kube-proxy
+
+Your Kubernetes master has initialized successfully!
+
+To start using your cluster, you need to run the following as a regular user:
+
+  mkdir -p $HOME/.kube
+  sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+  sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+You should now deploy a pod network to the cluster.
+Run "kubectl apply -f [podnetwork].yaml" with one of the options listed at:
+  https://kubernetes.io/docs/concepts/cluster-administration/addons/
+
+You can now join any number of machines by running the following on each node
+as root:
+
+  kubeadm join 192.168.11.200:6443 --token ewknz0.wxv1extttmyx3fb7 --discovery-token-ca-cert-hash sha256:5bb85ad41effb71c3c5e9a0ff7625d1f1ed40d491b5d7f313169aa93271e1177
+
+-------
+KUBE PROCESSES RUNNING AT THIS TIME
+-------
+Note: Apart from kubelet everything else is running as a container (with images pulled by kubeadm init)
+
+[root@kubemaster0 ~]# ps -ef|grep kub
+
+root      4270     1  1 14:32 ?        00:00:03 /usr/bin/kubelet --bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf --kubeconfig=/etc/kubernetes/kubelet.conf --config=/var/lib/kubelet/config.yaml --cgroup-driver=cgroupfs --network-plugin=cni
+
+--> This is a container
+root      4543  4525  0 14:32 ?        00:00:01 kube-scheduler --address=127.0.0.1 --kubeconfig=/etc/kubernetes/scheduler.conf --leader-elect=true
+
+--> This is a container
+root      4594  4564  1 14:32 ?        00:00:02 etcd --advertise-client-urls=https://127.0.0.1:2379 --cert-file=/etc/kubernetes/pki/etcd/server.crt --client-cert-auth=true --data-dir=/var/lib/etcd --initial-advertise-peer-urls=https://127.0.0.1:2380 --initial-cluster=kubemaster0=https://127.0.0.1:2380 --key-file=/etc/kubernetes/pki/etcd/server.key --listen-client-urls=https://127.0.0.1:2379 --listen-peer-urls=https://127.0.0.1:2380 --name=kubemaster0 --peer-cert-file=/etc/kubernetes/pki/etcd/peer.crt --peer-client-cert-auth=true --peer-key-file=/etc/kubernetes/pki/etcd/peer.key --peer-trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt --snapshot-count=10000 --trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
+
+--> This is a container
+root      4629  4600  7 14:32 ?        00:00:13 kube-apiserver --authorization-mode=Node,RBAC --advertise-address=192.168.11.200 --allow-privileged=true --client-ca-file=/etc/kubernetes/pki/ca.crt --enable-admission-plugins=NodeRestriction --enable-bootstrap-token-auth=true --etcd-cafile=/etc/kubernetes/pki/etcd/ca.crt --etcd-certfile=/etc/kubernetes/pki/apiserver-etcd-client.crt --etcd-keyfile=/etc/kubernetes/pki/apiserver-etcd-client.key --etcd-servers=https://127.0.0.1:2379 --insecure-port=0 --kubelet-client-certificate=/etc/kubernetes/pki/apiserver-kubelet-client.crt --kubelet-client-key=/etc/kubernetes/pki/apiserver-kubelet-client.key --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname --proxy-client-cert-file=/etc/kubernetes/pki/front-proxy-client.crt --proxy-client-key-file=/etc/kubernetes/pki/front-proxy-client.key --requestheader-allowed-names=front-proxy-client --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt --requestheader-extra-headers-prefix=X-Remote-Extra- --requestheader-group-headers=X-Remote-Group --requestheader-username-headers=X-Remote-User --secure-port=6443 --service-account-key-file=/etc/kubernetes/pki/sa.pub --service-cluster-ip-range=10.96.0.0/12 --tls-cert-file=/etc/kubernetes/pki/apiserver.crt --tls-private-key-file=/etc/kubernetes/pki/apiserver.key
+
+--> This is a container
+root      4650  4612  3 14:32 ?        00:00:06 kube-controller-manager --address=127.0.0.1 --allocate-node-cidrs=true --authentication-kubeconfig=/etc/kubernetes/controller-manager.conf --authorization-kubeconfig=/etc/kubernetes/controller-manager.conf --client-ca-file=/etc/kubernetes/pki/ca.crt --cluster-cidr=192.168.11.0/16 --cluster-signing-cert-file=/etc/kubernetes/pki/ca.crt --cluster-signing-key-file=/etc/kubernetes/pki/ca.key --controllers=*,bootstrapsigner,tokencleaner --kubeconfig=/etc/kubernetes/controller-manager.conf --leader-elect=true --node-cidr-mask-size=24 --requestheader-client-ca-file=/etc/kubernetes/pki/front-proxy-ca.crt --root-ca-file=/etc/kubernetes/pki/ca.crt --service-account-private-key-file=/etc/kubernetes/pki/sa.key --use-service-account-credentials=true
+
+--> This is a container
+root      4884  4869  0 14:32 ?        00:00:00 /usr/local/bin/kube-proxy --config=/var/lib/kube-proxy/config.conf
+root      6116  3852  0 14:35 pts/1    00:00:00 grep --color=auto kube
+
+--> No idea if this is container or local executable
+root      4564  3158  0 14:32 ?        00:00:00 containerd-shim -namespace moby -workdir /var/lib/docker/containerd/daemon/io.containerd.runtime.v1.linux/moby/4e6188450575d1af970d31b118d6dbad6c3c20bfeabff8e95ae9ee57dcd2b65b -address /var/run/docker/containerd/containerd.sock -containerd-binary /usr/bin/containerd -runtime-root /var/run/docker/runtime-runc
+
+--------
+SOME FILES 
+--------
+
+ETCD Database:
+[root@kubemaster0 snap]# pwd
+/var/lib/etcd/member/snap
+[root@kubemaster0 snap]# ls -l
+total 1384
+-rw------- 1 root root 16805888 Nov 26 14:42 db
+
+------
+DOCKER IMAGES PULLED BY KUBEADM
+------
+[root@kubemaster0 snap]# docker images
+REPOSITORY                           TAG                 IMAGE ID            CREATED             SIZE
+k8s.gcr.io/kube-proxy                v1.12.2             15e9da1ca195        4 weeks ago         96.5MB
+k8s.gcr.io/kube-apiserver            v1.12.2             51a9c329b7c5        4 weeks ago         194MB
+k8s.gcr.io/kube-controller-manager   v1.12.2             15548c720a70        4 weeks ago         164MB
+k8s.gcr.io/kube-scheduler            v1.12.2             d6d57c76136c        4 weeks ago         58.3MB
+k8s.gcr.io/etcd                      3.2.24              3cab8e1b9802        2 months ago        220MB
+k8s.gcr.io/coredns                   1.2.2               367cdc8433a4        2 months ago        39.2MB
+k8s.gcr.io/pause                     3.1                 da86e6ba6ca1        11 months ago       742kB
+
+------
+DOCKER CONTAINERS RUNNING
+------
+[root@kubemaster0 snap]# docker ps
+CONTAINER ID        IMAGE                  COMMAND                  CREATED             STATUS              PORTS               NAMES
+4ca19a7337ee        15e9da1ca195           "/usr/local/bin/kube…"   13 minutes ago      Up 13 minutes                           k8s_kube-proxy_kube-proxy-2vslx_kube-system_050429b9-f15a-11e8-8383-080027104420_0
+d5c7551fa0f3        k8s.gcr.io/pause:3.1   "/pause"                 13 minutes ago      Up 13 minutes                           k8s_POD_kube-proxy-2vslx_kube-system_050429b9-f15a-11e8-8383-080027104420_0
+96a0a09954af        51a9c329b7c5           "kube-apiserver --au…"   14 minutes ago      Up 14 minutes                           k8s_kube-apiserver_kube-apiserver-kubemaster0_kube-system_5e6dfd51f74056f5755ad37458e32735_0
+1a743604912f        15548c720a70           "kube-controller-man…"   14 minutes ago      Up 14 minutes                           k8s_kube-controller-manager_kube-controller-manager-kubemaster0_kube-system_f7c3fd097fed8947731c62676fd5fd2b_0
+4e6188450575        3cab8e1b9802           "etcd --advertise-cl…"   14 minutes ago      Up 14 minutes                           k8s_etcd_etcd-kubemaster0_kube-system_6e4d420da940fec11e1b7a93dfbfd6a0_0
+784fb325469c        d6d57c76136c           "kube-scheduler --ad…"   14 minutes ago      Up 14 minutes                           k8s_kube-scheduler_kube-scheduler-kubemaster0_kube-system_ee7b1077c61516320f4273309e9b4690_0
+e16d4f88240b        k8s.gcr.io/pause:3.1   "/pause"                 14 minutes ago      Up 14 minutes                           k8s_POD_kube-scheduler-kubemaster0_kube-system_ee7b1077c61516320f4273309e9b4690_0
+c7df3c16e795        k8s.gcr.io/pause:3.1   "/pause"                 14 minutes ago      Up 14 minutes                           k8s_POD_kube-controller-manager-kubemaster0_kube-system_f7c3fd097fed8947731c62676fd5fd2b_0
+ba7a3801142e        k8s.gcr.io/pause:3.1   "/pause"                 14 minutes ago      Up 14 minutes                           k8s_POD_kube-apiserver-kubemaster0_kube-system_5e6dfd51f74056f5755ad37458e32735_0
+1a59cb717429        k8s.gcr.io/pause:3.1   "/pause"                 14 minutes ago      Up 14 minutes                           k8s_POD_etcd-kubemaster0_kube-system_6e4d420da940fec11e1b7a93dfbfd6a0_0
+
+
+=================================
+APPENDIX: KUBELET STANDARD STEPS
+=================================
+THIS IS THE STANDARD STEPS SECTION FROM THE WEB ARTICLE.
+*** However, this subsection is not necessary as it errored out much and from another article 
+did  kubeadm init before starting service kubelet will take care of the errors.
+
+Standard steps per article:
+To add Kubernetes to this, issue the command: (or, edit /etc/systemd/system/kubelet.service.d/10-kubeadm.conf)
+# sed -i 's/cgroup-driver=systemd/cgroup-driver=cgroupfs/g' /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+
+NOTE: The line was not there to edit - therefore, added these lines:
+(Refer: https://stackoverflow.com/questions/51090061/unable-to-find-cgroups-details-in-10-kubeadm-conf-file)
+Add this line under [service] as a new Environment line: 
+Environment="KUBELET_CGROUP_ARGS=--cgroup-driver=cgroupfs"
+
+Add $KUBELET_CGROUP ARGS to ExecStrat line:
+ExecStart=/usr/bin/kubelet $KUBELET_CGROUP_ARGS $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_KUBEADM_ARGS $KUBELET_EXTRA_ARGS
+
+Restart the systemd daemon and the kubelet service with the commands:
+# systemctl daemon-reload
+# systemctl restart kubelet
+
+However, kubelet did not start.  
+See this section for the whole fix: APPENDIX - KUBELET INITIAL START - ERROR FIX EXERCISE
+
+Fix summary:
+(per https://linuxthegreat.wordpress.com/2017/10/17/installing-kubernetes-1-8-1-on-centos-7/)
+
+Remove config files from /etc/kubernetes
+Run kubeadm init      
+# kubeadm init --apiserver-advertise-address=192.168.11.200 --pod-network-cidr=192.168.11.0/16 --ignore-preflight-errors=all
+This will work, and still say 'kubelet is not running'
+After this init, do service kubelete start
+
+======================================================
+APPENDIX: KUBELET INITIAL START - ERROR FIX EXERCISE
+======================================================
+# service kubelet status
+Redirecting to /bin/systemctl status kubelet.service
+● kubelet.service - kubelet: The Kubernetes Node Agent
+   Loaded: loaded (/etc/systemd/system/kubelet.service; disabled; vendor preset: disabled)
+  Drop-In: /etc/systemd/system/kubelet.service.d
+           └─10-kubeadm.conf
+   Active: activating (auto-restart) (Result: exit-code) since Mon 2018-11-26 11:21:54 IST; 5s ago
+     Docs: https://kubernetes.io/docs/
+  Process: 8778 ExecStart=/usr/bin/kubelet $KUBELET_CGROUP_ARGS $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_KUBEADM_ARGS $KUBELET_EXTRA_ARGS (code=exited, status=255)
+ Main PID: 8778 (code=exited, status=255)
+
+Nov 26 11:21:54 kubemaster0 systemd[1]: kubelet.service: main process exited, code=exited, status=255/n/a
+Nov 26 11:21:54 kubemaster0 systemd[1]: Unit kubelet.service entered failed state.
+Nov 26 11:21:54 kubemaster0 systemd[1]: kubelet.service failed.
+
+/var/log/messages said:
+v 26 11:22:45 kubemaster0 systemd: Started kubelet: The Kubernetes Node Agent.
+Nov 26 11:22:45 kubemaster0 systemd: Starting kubelet: The Kubernetes Node Agent...
+Nov 26 11:22:45 kubemaster0 kubelet: Flag --cgroup-driver has been deprecated, This parameter should be set via the config file specified by the Kubelet's --config flag. See https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/ for more information.
+Nov 26 11:22:45 kubemaster0 kubelet: F1126 11:22:45.327518    8882 server.go:190] failed to load Kubelet config file /var/lib/kubelet/config.yaml, error failed to read kubelet config file "/var/lib/kubelet/config.yaml", error: open /var/lib/kubelet/config.yaml: no such file or directory
+Nov 26 11:22:45 kubemaster0 systemd: kubelet.service: main process exited, code=exited, status=255/n/a
+Nov 26 11:22:45 kubemaster0 systemd: Unit kubelet.service entered failed state.
+Nov 26 11:22:45 kubemaster0 systemd: kubelet.service failed.
+
+
+- KUBELET CONFIG FILE
+https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/
+--> https://github.com/kubernetes/kubernetes/blob/master/pkg/kubelet/apis/config/types.go
+
+/var/lib/kubelet/config.yaml
+For cgroup-driver, under KubeletConfiguration - use "CgroupDriver string" like:
+"CgroupDriver: cgroupfs" of "cgroupDriver: cgroupfs"
+Example in: https://github.com/kubernetes/kubernetes/issues/65863
+
+kind: KubeletConfiguration
+apiVersion: kubelet.config.k8s.io/v1beta1
+cgroupDriver: cgroupfs
+evictionHard:
+    memory.available:  "200Mi"
+cgroupDriver: cgroupfs
+
+- With config file, again got errors in /var/log/messages:
+Nov 26 12:09:48 kubemaster0 systemd: Started kubelet: The Kubernetes Node Agent.
+Nov 26 12:09:48 kubemaster0 systemd: Starting kubelet: The Kubernetes Node Agent...
+Nov 26 12:09:48 kubemaster0 systemd: Started Kubernetes systemd probe.
+Nov 26 12:09:48 kubemaster0 systemd: Starting Kubernetes systemd probe.
+Nov 26 12:09:48 kubemaster0 kubelet: I1126 12:09:48.574188   14222 server.go:408] Version: v1.12.2
+Nov 26 12:09:48 kubemaster0 kubelet: I1126 12:09:48.574371   14222 plugins.go:99] No cloud provider specified.
+Nov 26 12:09:48 kubemaster0 kubelet: F1126 12:09:48.574417   14222 server.go:262] failed to run Kubelet: unable to load bootstrap kubeconfig: stat /etc/kubernetes/bootstrap-kubelet.conf: no such file or directory
+Nov 26 12:09:48 kubemaster0 systemd: kubelet.service: main process exited, code=exited, status=255/n/a
+Nov 26 12:09:48 kubemaster0 systemd: Unit kubelet.service entered failed state.
+Nov 26 12:09:48 kubemaster0 systemd: kubelet.service failed.
+
+See this: 
+https://github.com/kubernetes/kubernetes/issues/57631
+
+- Then, commented out lines in /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+#Environment="KUBELET_KUBECONFIG_ARGS=--bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf --kubeconfig=/etc/kubernetes/kubelet.conf"
+
+Restart kubelet gave these errors in /var/log/messages
+Nov 26 12:24:35 kubemaster0 systemd: Started kubelet: The Kubernetes Node Agent.
+Nov 26 12:24:35 kubemaster0 systemd: Starting kubelet: The Kubernetes Node Agent...
+Nov 26 12:24:35 kubemaster0 systemd: Started Kubernetes systemd probe.
+Nov 26 12:24:35 kubemaster0 systemd: Starting Kubernetes systemd probe.
+Nov 26 12:24:35 kubemaster0 kubelet: I1126 12:24:35.322744   15458 server.go:408] Version: v1.12.2
+Nov 26 12:24:35 kubemaster0 kubelet: I1126 12:24:35.322896   15458 plugins.go:99] No cloud provider specified.
+Nov 26 12:24:35 kubemaster0 kubelet: W1126 12:24:35.322925   15458 server.go:553] standalone mode, no API client
+Nov 26 12:24:35 kubemaster0 kubelet: F1126 12:24:35.322937   15458 server.go:262] failed to run Kubelet: no client provided, cannot use webhook authentication
+Nov 26 12:24:35 kubemaster0 systemd: kubelet.service: main process exited, code=exited, status=255/n/a
+Nov 26 12:24:35 kubemaster0 systemd: Unit kubelet.service entered failed state.
+Nov 26 12:24:35 kubemaster0 systemd: kubelet.service failed.
+Nov 26 12:24:42 kubemaster0 systemd: Stopped kubelet: The Kubernetes Node Agent.
+Nov 26 12:24:42 kubemaster0 systemd: Configuration file /etc/systemd/system/kubelet.service.d/10-kubeadm.conf is marked executable. Please remove executable permission bits. Proceeding anyway.
+
+
+-- Try first doing kubeadm init and then kubelet start
+(per https://linuxthegreat.wordpress.com/2017/10/17/installing-kubernetes-1-8-1-on-centos-7/)
+NOTE: To avoid this first list of errors, remove the conf files from /etc/kubernetes
+      ALSO, run with flag --ignore-preflight-errors=all
+      
+First list of errors: 
+# kubeadm init --apiserver-advertise-address=192.168.1.99 --pod-network-cidr=192.168.1.0/16
+[root@kubemaster0 ~]# kubeadm init --apiserver-advertise-address=192.168.1.99 --pod-network-cidr=192.168.1.0/16
+[init] using Kubernetes version: v1.12.2
+[preflight] running pre-flight checks
+	[WARNING Service-Docker]: docker service is not enabled, please run 'systemctl enable docker.service'
+[preflight] The system verification failed. Printing the output from the verification:
+KERNEL_VERSION: 4.1.12-112.16.4.el7uek.x86_64
+CONFIG_NAMESPACES: enabled
+CONFIG_NET_NS: enabled
+CONFIG_PID_NS: enabled
+CONFIG_IPC_NS: enabled
+CONFIG_UTS_NS: enabled
+CONFIG_CGROUPS: enabled
+CONFIG_CGROUP_CPUACCT: enabled
+CONFIG_CGROUP_DEVICE: enabled
+CONFIG_CGROUP_FREEZER: enabled
+CONFIG_CGROUP_SCHED: enabled
+CONFIG_CPUSETS: enabled
+CONFIG_MEMCG: enabled
+CONFIG_INET: enabled
+CONFIG_EXT4_FS: enabled (as module)
+CONFIG_PROC_FS: enabled
+CONFIG_NETFILTER_XT_TARGET_REDIRECT: enabled (as module)
+CONFIG_NETFILTER_XT_MATCH_COMMENT: enabled (as module)
+CONFIG_OVERLAY_FS: enabled (as module)
+CONFIG_AUFS_FS: not set - Required for aufs.
+CONFIG_BLK_DEV_DM: enabled (as module)
+OS: Linux
+CGROUPS_CPU: enabled
+CGROUPS_CPUACCT: enabled
+CGROUPS_CPUSET: enabled
+CGROUPS_DEVICES: enabled
+CGROUPS_FREEZER: enabled
+CGROUPS_MEMORY: enabled
+	[WARNING Service-Kubelet]: kubelet service is not enabled, please run 'systemctl enable kubelet.service'
+[preflight] Some fatal errors occurred:
+	[ERROR CRI]: container runtime is not running: output: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+, error: exit status 1
+	[ERROR Service-Docker]: docker service is not active, please run 'systemctl start docker.service'
+	[ERROR FileContent--proc-sys-net-bridge-bridge-nf-call-iptables]: /proc/sys/net/bridge/bridge-nf-call-iptables does not exist
+	[ERROR SystemVerification]: failed to get docker info: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+[preflight] If you know what you are doing, you can make a check non-fatal with `--ignore-preflight-errors=...`
+[root@kubemaster0 ~]# ls -l /proc/sys/net/bridge/bridge-nf-call-iptables 
+-rw-r--r-- 1 root root 0 Nov 26 12:47 /proc/sys/net/bridge/bridge-nf-call-iptables
+[root@kubemaster0 ~]# ls -l /proc/sys/net/bridge/bridge-nf-call-iptables 
+
+- Rerun kubeadm after removing conf files from /etc/kubernetes
+NOTE: Now it pulls some files, copies some files onto /etc/kubernetes and then only cribs about kubelet not running
+
+# kubeadm init --apiserver-advertise-address=192.168.11.200 --pod-network-cidr=192.168.11.0/16 --ignore-preflight-errors=all
+[init] using Kubernetes version: v1.12.2
+[preflight] running pre-flight checks
+	[WARNING Service-Docker]: docker service is not enabled, please run 'systemctl enable docker.service'
+[preflight] The system verification failed. Printing the output from the verification:
+KERNEL_VERSION: 4.1.12-112.16.4.el7uek.x86_64
+CONFIG_NAMESPACES: enabled
+CONFIG_NET_NS: enabled
+CONFIG_PID_NS: enabled
+CONFIG_IPC_NS: enabled
+CONFIG_UTS_NS: enabled
+CONFIG_CGROUPS: enabled
+CONFIG_CGROUP_CPUACCT: enabled
+CONFIG_CGROUP_DEVICE: enabled
+CONFIG_CGROUP_FREEZER: enabled
+CONFIG_CGROUP_SCHED: enabled
+CONFIG_CPUSETS: enabled
+CONFIG_MEMCG: enabled
+CONFIG_INET: enabled
+CONFIG_EXT4_FS: enabled (as module)
+CONFIG_PROC_FS: enabled
+CONFIG_NETFILTER_XT_TARGET_REDIRECT: enabled (as module)
+CONFIG_NETFILTER_XT_MATCH_COMMENT: enabled (as module)
+CONFIG_OVERLAY_FS: enabled (as module)
+CONFIG_AUFS_FS: not set - Required for aufs.
+CONFIG_BLK_DEV_DM: enabled (as module)
+DOCKER_VERSION: 18.09.0
+OS: Linux
+CGROUPS_CPU: enabled
+CGROUPS_CPUACCT: enabled
+CGROUPS_CPUSET: enabled
+CGROUPS_DEVICES: enabled
+CGROUPS_FREEZER: enabled
+CGROUPS_MEMORY: enabled
+	[WARNING SystemVerification]: unsupported docker version: 18.09.0
+	[WARNING Service-Kubelet]: kubelet service is not enabled, please run 'systemctl enable kubelet.service'
+[preflight/images] Pulling images required for setting up a Kubernetes cluster
+[preflight/images] This might take a minute or two, depending on the speed of your internet connection
+[preflight/images] You can also perform this action in beforehand using 'kubeadm config images pull'
+[kubelet] Writing kubelet environment file with flags to file "/var/lib/kubelet/kubeadm-flags.env"
+[kubelet] Writing kubelet configuration to file "/var/lib/kubelet/config.yaml"
+[preflight] Activating the kubelet service
+[certificates] Generated ca certificate and key.
+[certificates] Generated apiserver certificate and key.
+[certificates] apiserver serving cert is signed for DNS names [kubemaster0 kubernetes kubernetes.default kubernetes.default.svc kubernetes.default.svc.cluster.local] and IPs [10.96.0.1 192.168.1.99]
+[certificates] Generated apiserver-kubelet-client certificate and key.
+[certificates] Generated front-proxy-ca certificate and key.
+[certificates] Generated front-proxy-client certificate and key.
+[certificates] Generated etcd/ca certificate and key.
+[certificates] Generated etcd/server certificate and key.
+[certificates] etcd/server serving cert is signed for DNS names [kubemaster0 localhost] and IPs [127.0.0.1 ::1]
+[certificates] Generated etcd/healthcheck-client certificate and key.
+[certificates] Generated etcd/peer certificate and key.
+[certificates] etcd/peer serving cert is signed for DNS names [kubemaster0 localhost] and IPs [192.168.1.99 127.0.0.1 ::1]
+[certificates] Generated apiserver-etcd-client certificate and key.
+[certificates] valid certificates and keys now exist in "/etc/kubernetes/pki"
+[certificates] Generated sa key and public key.
+[kubeconfig] Wrote KubeConfig file to disk: "/etc/kubernetes/admin.conf"
+[kubeconfig] Wrote KubeConfig file to disk: "/etc/kubernetes/kubelet.conf"
+[kubeconfig] Wrote KubeConfig file to disk: "/etc/kubernetes/controller-manager.conf"
+[kubeconfig] Wrote KubeConfig file to disk: "/etc/kubernetes/scheduler.conf"
+[controlplane] wrote Static Pod manifest for component kube-apiserver to "/etc/kubernetes/manifests/kube-apiserver.yaml"
+[controlplane] wrote Static Pod manifest for component kube-controller-manager to "/etc/kubernetes/manifests/kube-controller-manager.yaml"
+[controlplane] wrote Static Pod manifest for component kube-scheduler to "/etc/kubernetes/manifests/kube-scheduler.yaml"
+[etcd] Wrote Static Pod manifest for a local etcd instance to "/etc/kubernetes/manifests/etcd.yaml"
+[init] waiting for the kubelet to boot up the control plane as Static Pods from directory "/etc/kubernetes/manifests" 
+[init] this might take a minute or longer if the control plane images have to be pulled
+[kubelet-check] It seems like the kubelet isn't running or healthy.
+[kubelet-check] The HTTP call equal to 'curl -sSL http://localhost:10248/healthz' failed with error: Get http://localhost:10248/healthz: dial tcp [::1]:10248: connect: connection refused.
+[kubelet-check] It seems like the kubelet isn't running or healthy.
+[kubelet-check] The HTTP call equal to 'curl -sSL http://localhost:10248/healthz' failed with error: Get http://localhost:10248/healthz: dial tcp [::1]:10248: connect: connection refused.
+[kubelet-check] It seems like the kubelet isn't running or healthy.
+[kubelet-check] The HTTP call equal to 'curl -sSL http://localhost:10248/healthz' failed with error: Get http://localhost:10248/healthz: dial tcp [::1]:10248: connect: connection refused.
+[kubelet-check] It seems like the kubelet isn't running or healthy.
+[kubelet-check] The HTTP call equal to 'curl -sSL http://localhost:10248/healthz' failed with error: Get http://localhost:10248/healthz: dial tcp [::1]:10248: connect: connection refused.
+
+- NOW, START KUBELET
+# service kubelet start
+
+First, it failed saying there are two lines of ExecStart in kubelet.service.d config file 10-kubeadm.conf
+Then, copied the original 10-kubeadm.conf confing file on to what was there (though that too had two ExecStart)
+-> and ran "service kubelete start" - then kubelet started
+
+However, it kept spewing messages into /var/log/messages like the following:
+Hopefully, these will be fixed upon further setup.
+Nov 26 13:53:27 kubemaster0 kubelet: E1126 13:53:27.859872    9390 kubelet.go:2236] node "kubemaster0" not found
+Nov 26 13:53:24 kubemaster0 kubelet: E1126 13:53:24.050606    9390 eviction_manager.go:243] eviction manager: failed to get get summary stats: failed to get node info: node "kubemaster0" not found
+Nov 26 13:53:24 kubemaster0 kubelet: W1126 13:53:24.061391    9390 cni.go:188] Unable to update cni config: No networks found in /etc/cni/net.d
+Nov 26 13:53:24 kubemaster0 kubelet: E1126 13:53:24.061470    9390 kubelet.go:2167] Container runtime network not ready: NetworkReady=false reason:NetworkPluginNotReady message:docker: network plugin is not ready: cni config uninitialized

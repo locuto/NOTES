@@ -1,0 +1,343 @@
+==============================
+DOCKER INSTALL CONFIG - 2019 (OEL, CENTOS, RHEL)
+==============================
+
+https://docs.docker.com/install/linux/docker-ce/centos/#install-from-a-package
+https://docs.docker.com/install/linux/docker-ce/centos/#install-using-the-repository
+
+Also refer to other install-config-doc - install-docker-CE-on-CENTOS-rhel.txt
+
+
+======= ======= ============== ======= ============== ======= =======
+FOR KUBERNETES - CHOOSE THE RIGHT DOCKER VERSION
+======= ======= ============== ======= ============== ======= =======
+Check the validated docker versions from kubernetes version's change log document like the following:
+https://github.com/kubernetes/kubernetes/blob/master/CHANGELOG-1.12.md#external-dependencies
+- Look in 'external dependencies'
+- For 1.12 - The list of validated docker versions was updated to 1.11.1, 1.12.1, 1.13.1, 17.03, 17.06, 17.09, 18.06. (#68495)
+
+==============================
+SET UP THE REPOSITORY
+==============================
+Install required packages. yum-utils provides the yum-config-manager utility, and device-mapper-persistent-data and lvm2 are required by the devicemapper storage driver.
+
+$ sudo yum install -y yum-utils \
+  device-mapper-persistent-data \
+  lvm2
+Use the following command to set up the stable repository.
+
+$ sudo yum-config-manager \
+    --add-repo \
+    https://download.docker.com/linux/centos/docker-ce.repo
+
+==============================
+INSTALL CONTAINER-SELINUX
+==============================
+Package container-selinux must be installed to avoid error
+Error: Package: 3:docker-ce-18.09.1-3.el7.x86_64 (/docker-ce-18.09.1-3.el7.x86_64)
+           Requires: container-selinux >= 2.9
+
+Download it from http://mirror.centos.org/centos/7/extras/x86_64/Packages/
+Install by "yum install package.rpm" --> dont use rpm command as yum installs dependencies automatically
+
+# yum install -y container-selinux-2.74-1.el7.noarch.rpm
+- OR DIRECTLY FROM WEB - 
+# yum install -y http://mirror.centos.org/centos/7/extras/x86_64/Packages/container-selinux-2.74-1.el7.noarch.rpm
+...
+...
+...
+Installed:
+  container-selinux.noarch 2:2.74-1.el7                                                                 
+
+Dependency Updated:
+  libselinux.x86_64 0:2.5-14.1.el7                                                                      
+  libselinux-python.x86_64 0:2.5-14.1.el7                                                               
+  libselinux-utils.x86_64 0:2.5-14.1.el7                                                                
+  libsemanage.x86_64 0:2.5-14.el7                                                                       
+  libsemanage-python.x86_64 0:2.5-14.el7                                                                
+  libsepol.x86_64 0:2.5-10.el7                                                                          
+  policycoreutils.x86_64 0:2.5-29.0.1.el7                                                               
+  policycoreutils-python.x86_64 0:2.5-29.0.1.el7                                                        
+  selinux-policy.noarch 0:3.13.1-229.0.1.el7_6.6                                                        
+  selinux-policy-targeted.noarch 0:3.13.1-229.0.1.el7_6.6                                               
+  setools-libs.x86_64 0:3.3.8-4.el7   
+  
+==============================
+INSTALL DOCKER CE - USING YUM
+==============================
+Install the latest version of Docker CE, or go to the next step to install a specific version:
+
+$ sudo yum install docker-ce
+
+-- OPTIONAL - TO INSTALL SPECIFIC DOCKER VERSION
+To install a specific version of Docker CE, list the available versions in the repo, then select and install:
+
+a. List and sort the versions available in your repo. This example sorts results by version number, highest to lowest, and is truncated:
+
+$ yum list docker-ce --showduplicates | sort -r
+Loaded plugins: langpacks, ulninfo
+docker-ce.x86_64            3:18.09.1-3.el7                     docker-ce-stable
+docker-ce.x86_64            3:18.09.0-3.el7                     docker-ce-stable
+docker-ce.x86_64            18.06.1.ce-3.el7                    docker-ce-stable
+docker-ce.x86_64            18.06.0.ce-3.el7                    docker-ce-stable
+docker-ce.x86_64            18.03.1.ce-1.el7.centos             docker-ce-stable
+docker-ce.x86_64            18.03.0.ce-1.el7.centos             docker-ce-stable
+docker-ce.x86_64            17.12.1.ce-1.el7.centos             docker-ce-stable
+docker-ce.x86_64            17.12.0.ce-1.el7.centos             docker-ce-stable
+docker-ce.x86_64            17.09.1.ce-1.el7.centos             docker-ce-stable
+docker-ce.x86_64            17.09.0.ce-1.el7.centos             docker-ce-stable
+docker-ce.x86_64            17.06.2.ce-1.el7.centos             docker-ce-stable
+docker-ce.x86_64            17.06.1.ce-1.el7.centos             docker-ce-stable
+docker-ce.x86_64            17.06.0.ce-1.el7.centos             docker-ce-stable
+docker-ce.x86_64            17.03.3.ce-1.el7                    docker-ce-stable
+docker-ce.x86_64            17.03.2.ce-1.el7.centos             docker-ce-stable
+docker-ce.x86_64            17.03.1.ce-1.el7.centos             docker-ce-stable
+docker-ce.x86_64            17.03.0.ce-1.el7.centos             docker-ce-stable
+
+$ sudo yum install docker-ce-<VERSION STRING>
+Example: 
+yum install docker-ce-18.03.1.ce-1.el7.centos
+
+==============================
+INSTALL DOCKER CE - USING RPM
+==============================
+
+Download RPM from https://download.docker.com/linux/centos/7/x86_64/stable/Packages/ 
+Install by running "yum install /path/to/package.rpm"
+
+- DOWNLOAD THESE
+docker-ce-cli-18.09.1-3.el7.x86_64.rpm
+docker-ce-18.09.1-3.el7.x86_64.rpm
+containerd.io-1.2.2-3.el7.x86_64.rpm
+
+- INSTALL this way
+# yum install docker-ce-cli-18.09.1-3.el7.x86_64.rpm
+# yum install containerd.io-1.2.2-3.el7.x86_64.rpm
+# yum install docker-ce-18.09.1-3.el7.x86_64.rpm
+
+---- INSTEAD, I ran this directly - and it downloaded docker-ce-cli and containerd
+# yum install docker-ce-18.09.1-3.el7.x86_64.rpm
+
+Dependencies Resolved
+
+========================================================================================================
+ Package              Arch          Version                Repository                              Size
+========================================================================================================
+Installing:
+ docker-ce            x86_64        3:18.09.1-3.el7        /docker-ce-18.09.1-3.el7.x86_64         81 M
+Installing for dependencies:
+ containerd.io        x86_64        1.2.2-3.el7            docker-ce-stable                        22 M
+ docker-ce-cli        x86_64        1:18.09.1-3.el7        docker-ce-stable                        14 M
+
+Transaction Summary
+========================================================================================================
+Install  1 Package (+2 Dependent packages)
+
+...
+...
+
+- START DOCKER
+
+# systemctl enable docker
+Created symlink from /etc/systemd/system/multi-user.target.wants/docker.service to /usr/lib/systemd/system/docker.service.
+
+# systemctl start docker
+
+# systemctl status docker
+● docker.service - Docker Application Container Engine
+   Loaded: loaded (/usr/lib/systemd/system/docker.service; enabled; vendor preset: disabled)
+   Active: active (running) since Fri 2019-01-25 20:32:49 IST; 5s ago
+     Docs: https://docs.docker.com
+ Main PID: 5567 (dockerd)
+   Memory: 45.1M
+   CGroup: /system.slice/docker.service
+           ├─5567 /usr/bin/dockerd -H fd://
+           └─5577 containerd --config /var/run/docker/containerd/containerd.toml --log-level info
+
+Jan 25 20:32:48 docker dockerd[5567]: time="2019-01-25T20:32:48.935643609+05:30" level=info msg="...nds"
+Jan 25 20:32:48 docker dockerd[5567]: time="2019-01-25T20:32:48.936267141+05:30" level=warning ms...und"
+Jan 25 20:32:48 docker dockerd[5567]: time="2019-01-25T20:32:48.936459742+05:30" level=info msg="...rt."
+Jan 25 20:32:49 docker dockerd[5567]: time="2019-01-25T20:32:49.026174989+05:30" level=info msg="...ess"
+Jan 25 20:32:49 docker dockerd[5567]: time="2019-01-25T20:32:49.112487039+05:30" level=info msg="...ne."
+Jan 25 20:32:49 docker dockerd[5567]: time="2019-01-25T20:32:49.126968849+05:30" level=warning ms...lay2
+Jan 25 20:32:49 docker dockerd[5567]: time="2019-01-25T20:32:49.127163380+05:30" level=info msg="...09.1
+Jan 25 20:32:49 docker dockerd[5567]: time="2019-01-25T20:32:49.135287723+05:30" level=info msg="...ion"
+Jan 25 20:32:49 docker systemd[1]: Started Docker Application Container Engine.
+Jan 25 20:32:49 docker dockerd[5567]: time="2019-01-25T20:32:49.187011524+05:30" level=info msg="...ock"
+Hint: Some lines were ellipsized, use -l to show in full.
+
+====================
+CONFIGURE BASICS
+====================
+
+Create a group 'docker' and a user 'docker' or other with group docker.
+Use that new user with docker group to run docker images.
+
+# groupadd docker
+groupadd: group 'docker' already exists
+
+# useradd docker -g docker
+
+$ sudo su - docker
+$ which docker
+/bin/docker
+
+=====================
+FIRST CONTAINER TRIAL
+=====================
+- HELLO WORLD CONTAINER
+# docker run hello-world
+Unable to find image 'hello-world:latest' locally
+latest: Pulling from library/hello-world
+1b930d010525: Pull complete 
+Digest: sha256:2557e3c07ed1e38f26e389462d03ed943586f744621577a99efb77324b0fe535
+Status: Downloaded newer image for hello-world:latest
+
+Hello from Docker!
+
+- UBUNTU
+$ docker run ubuntu /bin/echo 'Hello world'
+Unable to find image 'ubuntu:latest' locally
+latest: Pulling from library/ubuntu
+
+aed15891ba52: Pull complete
+773ae8583d14: Pull complete
+d1d48771f782: Pull complete
+cd3d6cd6c0cf: Pull complete
+8ff6f8a9120c: Pull complete
+Digest: sha256:35bc48a1ca97c3971611dc4662d08d131869daa692acb281c7e9e052924e38b1
+Status: Downloaded newer image for ubuntu:latest
+Hello world
+
+===========================
+ONE MORE CONTAINER - REDIS
+===========================
+
+- PULL THE IMAGE
+# docker pull redis
+Using default tag: latest
+latest: Pulling from library/redis
+5e6ec7f28fb7: Pull complete 
+7fdf7fb3ec49: Pull complete 
+4bd5dbe7bfa7: Pull complete 
+71f540684935: Pull complete 
+8c6dbecedd0f: Pull complete 
+9d190b6684fc: Pull complete 
+Digest: sha256:b950de29d5d4e4ef9a9d2713aa1213f76486dd8f9c0a43e9e8aac72e2cfc3827
+Status: Downloaded newer image for redis:latest
+
+# docker images
+REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+redis               latest              82629e941a38        2 days ago          95MB
+hello-world         latest              fce289e99eb9        3 weeks ago         1.84kB
+
+- RUN A CONTAINER USING THE IMAGE
+# docker run  --name redis1 -d redis
+
+# docker ps
+CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS              PORTS               NAMES
+c42fa7ebe25d        redis               "docker-entrypoint.s…"   3 seconds ago       Up 2 seconds        6379/tcp            redis1
+
+# docker ps -a
+CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS                      PORTS               NAMES
+c42fa7ebe25d        redis               "docker-entrypoint.s…"   40 seconds ago      Up 39 seconds               6379/tcp            redis1
+3e8efe4cca0b        hello-world         "/hello"                 28 minutes ago      Exited (0) 28 minutes ago                       modest_feynman
+
+=============================================
+SERVICE TO AUTOSTART A CONTAINER UPON STARTUP
+=============================================
+https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux_atomic_host/7/html/managing_containers/using_systemd_with_containers
+https://karlstoney.com/2017/03/03/docker-containers-as-systemd-services/
+
+--------------------
+FOR REDIS CONTAINER
+--------------------
+NOTE: THIS WORKS FOR CONTAINERS THAT ARE 'SHUTDOWN' not removed 
+      - those created simply like "docker run  --name redis1 -d redis"
+      
+- CREATE SERVICE DEFINITION FILE
+Configure the container as a systemd service by creating the unit configuration file in the /etc/systemd/system/ directory.
+For example, the contents of the /etc/systemd/system/redis-container.service can look as follows (note that redis_server
+matches the name you set on the docker run line):
+
+NOTE: Replace redis_server by name of your redis container
+
+File /etc/systemd/system/redis-container.service (or redis1.servive): 
+--> replace redis_server by redis1 which is the container name
+
+[Unit]
+Description=Redis container
+After=docker.service
+
+[Service]
+Restart=always
+ExecStart=/usr/bin/docker start -a redis_server
+ExecStop=/usr/bin/docker stop -t 2 redis_server
+
+[Install]
+WantedBy=local.target
+
+- ENABLE SERVICE
+# systemctl enable redis-container.service
+
+- STOP AND START THE SERVICE
+
+[root@docker system]# systemctl stop redis1
+
+[root@docker system]# systemctl status redis1
+● redis1.service - Redis container
+   Loaded: loaded (/etc/systemd/system/redis1.service; enabled; vendor preset: disabled)
+   Active: inactive (dead)
+   
+[root@docker system]# docker ps
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
+
+[root@docker system]# systemctl start redis1
+
+[root@docker system]# docker ps
+CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS              PORTS               NAMES
+c42fa7ebe25d        redis               "docker-entrypoint.s…"   24 hours ago        Up 2 seconds        6379/tcp            redis1
+
+# ps -ef|grep redis
+root      8491     1  0 21:16 ?        00:00:00 /usr/bin/docker start -a redis1
+polkitd   8533  8515  0 21:16 ?        00:00:08 redis-server *:6379
+
+[root@docker system]# systemctl status redis1
+● redis1.service - Redis container
+   Loaded: loaded (/etc/systemd/system/redis1.service; enabled; vendor preset: disabled)
+   Active: active (running) since Sat 2019-01-26 21:16:26 IST; 10s ago
+ Main PID: 8491 (docker)
+   Memory: 19.7M
+   CGroup: /system.slice/redis1.service
+           └─8491 /usr/bin/docker start -a redis1
+
+Jan 26 21:16:26 docker systemd[1]: Starting Redis container...
+Jan 26 21:16:27 docker docker[8491]: 1:C 26 Jan 2019 15:46:27.554 # oO0OoO0OoO0Oo Redis is starting ...oO0Oo
+Jan 26 21:16:27 docker docker[8491]: 1:C 26 Jan 2019 15:46:27.554 # Redis version=5.0.3, bits=64, co...arted
+Jan 26 21:16:27 docker docker[8491]: 1:C 26 Jan 2019 15:46:27.554 # Warning: no config file specifie....conf
+Jan 26 21:16:27 docker docker[8491]: 1:M 26 Jan 2019 15:46:27.555 * Running mode=standalone, port=6379.
+Jan 26 21:16:27 docker docker[8491]: 1:M 26 Jan 2019 15:46:27.555 # WARNING: The TCP backlog setting... 128.
+Jan 26 21:16:27 docker docker[8491]: 1:M 26 Jan 2019 15:46:27.555 # Server initialized
+Jan 26 21:16:27 docker docker[8491]: 1:M 26 Jan 2019 15:46:27.555 # WARNING overcommit_memory is set...fect.
+Jan 26 21:16:27 docker docker[8491]: 1:M 26 Jan 2019 15:46:27.556 * DB loaded from disk: 0.000 seconds
+Jan 26 21:16:27 docker docker[8491]: 1:M 26 Jan 2019 15:46:27.556 * Ready to accept connections
+Hint: Some lines were ellipsized, use -l to show in full.
+[root@docker system]# ps -ef|grep redis1
+root      8491     1  0 21:16 ?        00:00:00 /usr/bin/docker start -a redis1
+root      8607  8055  0 21:16 pts/0    00:00:00 grep --color=auto redis1
+
+- THE LOCAL REDIS PROCESS ON HOST
+https://blog.dbi-services.com/how-uid-mapping-works-in-docker-containers/
+
+This is started by polkit or polkitd which provides elevated privilege access to non elevated access users in containers.
+NOTE: Though ps -ef on OS lists a port 6379 also, there is no listening process of that process on the host itself
+
+# ps -ef|grep redis
+root      8491     1  0 21:16 ?        00:00:00 /usr/bin/docker start -a redis1
+polkitd   8533  8515  0 21:16 ?        00:00:08 redis-server *:6379
+
+# netstat -anp |grep 6379
+< does not list anything >
+
+
+

@@ -6,15 +6,25 @@ docker network inspect bridge|host
 
 #--------------------------------
 # Running containers as daemons
+Running a container so it exits after executing something
+# docker --rm image_name command
+# docker --rm alpine:1.0 '/bin/sh/ls -l'
+
+#--------------------------------
+# Running containers as daemons
 
 # DAEMON WITHOUT EXITING
+- Method1
 # docker run --name sengraf -it -d ubuntu:14.04 tail -f /dev/null
 NOTE: tail -f /dev/null is necessary so that the machine keeps doing something and not exit immediately
       DO SO when you are yet to install stuff into the machine and create a persistent service
 
+- Method2
+# docker run --name centos-linux -d centos /bin/sh -c "while true; do ping 8.8.8.8; done"
+
 DAEMON WITH SOME LISTENING SERVICE RUNNING IN IT
 NOTE: Daemon runs below may exit if there is nothig running and listening in the container
-# Without port forwarding:
+# Without port forwarding: (-d for daemon. without it, it will run in foreground)
 $ docker run --name <container name> -d <image name>
 $ docker run --name pg_test -d eg_postgresql
 
@@ -27,8 +37,15 @@ $ docker run --name pg_test2 -p 30001:5432 -d eg_postgresql
 $ docker run --name sengraf1 -it -p 8080:8081 -p 3000:3001 -d <image id> tail -f /dev/null
 
 #--------------------------------
-# Get into a running container 
+# Get into a running container (say, like ssh)
+Method1:
 docker exec -it <container id> /bin/bash
+
+Method2:
+$ sudo docker attach 665b4a1e17b6 #by ID
+or
+$ sudo docker attach loving_heisenberg #by Name
+$ root@665b4a1e17b6:/#
 
 #--------------------------------
 # Run a command in a running container
@@ -39,8 +56,14 @@ docker exec -it <container id> <command>
 docker ps -q -a -f status=exited
 
 #--------------------------------
+# Stop containers
+
+docker stop <container name>
+
+#--------------------------------
 # Remove containers
 
+(stop before remove)
 # Remove exited containers
 # http://blog.yohanliyanage.com/2015/05/docker-clean-up-after-yourself/
 docker rm -v $(docker ps -a -q -f status=exited)
@@ -56,9 +79,22 @@ docker rm -f <container name>
 
 #--------------------------------
 # Remove an image
-docker rm <image name>
+docker rmi <image name>
 
 #--------------------------------
 # List container details
 docker inspect <container name>
 
+#------------
+# Build from Dockerfile
+docker build -t image_name:version .
+Example:
+docker build -t gooscmd:1.0 .
+
+# run the built image
+docker run --rm mage_name:version arguments
+Example:
+docker run --rm gooscmd:1.0 ifconfig
+
+# Prune/remove intermediate images created during build
+docker image prune -f

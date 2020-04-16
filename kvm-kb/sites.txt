@@ -1,0 +1,142 @@
+------------------------------------------
+A SET TO CONSIDER (used this in creating nested virtualized vm on Virtualbox)
+
+https://computingforgeeks.com/how-to-create-and-configure-bridge-networking-for-kvm-in-linux/
+https://www.cyberciti.biz/faq/create-vm-using-the-qcow2-image-file-in-kvm/
+https://www.cyberciti.biz/faq/linux-kvm-libvirt-dnsmasq-dhcp-static-ip-address-configuration-for-guest-os/
+https://www.cyberciti.biz/faq/find-ip-address-of-linux-kvm-guest-virtual-machine/
+https://www.tecmint.com/create-multiple-ip-addresses-to-one-single-network-interface/
+https://www.cyberciti.biz/faq/rhel-centos-linux-kvm-virtualization-start-virtual-machine-guest/
+------------------------------------------
+Install-config: 
+https://www.tecmint.com/install-and-configure-kvm-in-linux/ - 4 part series part 1
+https://www.tecmint.com/multiple-virtual-machine-installation-using-network-install-kvm/ - part2
+https://www.tecmint.com/manage-kvm-storage-volumes-and-pools/ - part3
+https://www.tecmint.com/kvm-management-tools-to-manage-virtual-machines/ - part4
+
+https://www.cyberciti.biz/faq/installing-kvm-on-ubuntu-16-04-lts-server/ - on ubuntu
+
+https://www.linuxtechi.com/install-kvm-hypervisor-on-centos-7-and-rhel-7/
+https://www.linuxquestions.org/questions/linux-laptop-and-netbook-25/how-do-you-kvm-on-vmware-virtualbox-4175611275/
+--> about vbox not supporting further virtualization on a vm
+
+Tutorial (including creating bridge interface onwards);
+https://www.linuxtechi.com/install-kvm-hypervisor-on-centos-7-and-rhel-7/ (ok, shows gui based vm create)
+https://coelhorjc.wordpress.com/2015/04/01/using-kvm-linux-hypervisor-with-libvirt-virtsh-virt-install-and-guestfishlibguestfs/
+https://www.cyberciti.biz/faq/how-to-install-kvm-on-centos-7-rhel-7-headless-server/ (seems very good)
+
+Tutorial - multilayered approach: with kickstart
+https://www.redpill-linpro.com/sysadvent/2016/12/14/use-virt-manager-to-build-disk-images.html
+
+Create Guest VMs:
+https://help.ubuntu.com/community/KVM/CreateGuests (also deals with overlay)
+
+Creating additional disk and attach to VM:
+https://www.cyberciti.biz/faq/how-to-add-disk-image-to-kvm-virtual-machine-with-virsh-command/
+
+Various OS flavors virt-install command:
+https://raymii.org/s/articles/virt-install_introduction_and_copy_paste_distro_install_commands.html#toc_1
+- This also has kickstart
+(same with kickstart and packer instead of virt-install - https://www.packer.io/docs/builders/qemu.html)
+
+Tutorial
+https://groups.google.com/forum/#!topic/packer-tool/je2D0LRhWj0 --> on mac with hvf
+
+Man page
+https://linux.die.net/man/1/virt-install
+
+Bridge creation: (also see items under Create additional network (not just default with bridge virbr0):
+Also see notes in https://github.com/coderdba/NOTES/blob/master/kvm-kb/virtualbox-host/*.*
+  Note: Combined bridge config stuff from both these sites
+  - https://www.golinuxcloud.com/how-to-configure-network-bridge-nmtui-linux/
+  - https://www.linuxtechi.com/install-kvm-hypervisor-on-centos-7-and-rhel-7/
+  - https://computingforgeeks.com/how-to-create-and-configure-bridge-networking-for-kvm-in-linux/
+
+https://www.golinuxcloud.com/how-to-configure-network-bridge-nmtui-linux/
+https://jamielinux.com/docs/libvirt-networking-handbook/bridged-network.html (more details)
+https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/6/html/deployment_guide/s2-networkscripts-interfaces_network-bridge (bond and bridge both)
+
+Create additional network (not just default with bridge virbr0):
+https://computingforgeeks.com/how-to-create-and-configure-bridge-networking-for-kvm-in-linux/
+https://libvirt.org/sources/virshcmdref/html/sect-net-create.html
+
+Creating a cloud-ready image:
+https://blogs.oracle.com/ravello/kvm-for-cloud-linux-image
+
+Creating VMs using virt-install:
+https://www.cyberciti.biz/faq/create-vm-using-the-qcow2-image-file-in-kvm/ (using qcow2)
+https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/virtualization_deployment_and_administration_guide/sect-guest_virtual_machine_installation_overview-creating_guests_with_virt_install
+
+Creating VMs using virt-install: (using cdrom/dvd ISO)
+- https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/virtualization_deployment_and_administration_guide/sect-guest_virtual_machine_installation_overview-creating_guests_with_virt_install#sect-Guest_virtual_machine_installation_from_ISO_image
+
+Creating VMs using virt-install: (using kickstart)
+https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/virtualization_deployment_and_administration_guide/sect-guest_virtual_machine_installation_overview-creating_guests_with_virt_install#sect-Guest_virtual_machine_installation_overview-virt_install-Kickstart
+
+From Oracle site:
+- https://blogs.oracle.com/oda/kvm-deploying-guest-vms-with-iso
+
+From Openstack site:
+- https://docs.openstack.org/image-guide/virt-install.html
+  - https://docs.openstack.org/image-guide/centos-image.html (for centos)
+
+Troubleshooting DVD-iso file permission issue:
+https://unix.stackexchange.com/questions/351240/could-not-open-root-centos-7-x86-64-minimal-1611-iso-permission-denied
+
+Troubleshooting: "WARNING  No console to launch for the guest, defaulting to --wait -1"
+https://serverfault.com/questions/257962/kvm-guest-installed-from-console-but-how-to-get-to-the-guests-console
+
+not good - https://linuxconfig.org/how-to-create-and-manage-kvm-virtual-machines-from-cli
+
+Kickstart file config:
+https://www.golinuxhub.com/2017/07/sample-kickstart-configuration-file-for.html
+
+CLOUD-INIT
+https://stafwag.github.io/blog/blog/2019/03/03/howto-use-centos-cloud-images-with-cloud-init/
+https://cloud.centos.org/centos/7/images/
+https://cloudinit.readthedocs.io/en/latest/
+
+=============
+OTHER
+=============
+Guest-fs libraries (like virt resize) - http://libguestfs.org/
+
+How to find guest IP:
+- https://unix.stackexchange.com/questions/33191/how-to-find-the-ip-address-of-a-kvm-virtual-machine-that-i-can-ssh-into-it
+- https://www.cyberciti.biz/faq/find-ip-address-of-linux-kvm-guest-virtual-machine/
+
+Adding static IP:
+https://kb.novaordis.com/index.php/Virt-install_Examples
+https://bugzilla.redhat.com/show_bug.cgi?id=1375047
+https://www.cyberciti.biz/faq/linux-kvm-libvirt-dnsmasq-dhcp-static-ip-address-configuration-for-guest-os/ - very detailed - also has "virsh net edit" to change the default bridge network IP settings
+
+Multiple interfaces for guest:
+https://askubuntu.com/questions/581771/kvm-create-a-virtual-machine-with-2-bridges-interfaces
+
+Setting a password inside a qcow2 image:
+https://ask.openstack.org/en/question/47183/how-can-i-get-username-and-password-of-a-qcow2-image/
+https://scottlinux.com/2017/05/08/set-password-or-ssh-key-for-centos-cloud-images/
+
+Nested virtual machine - ping
+https://docs.microsoft.com/en-us/virtualization/hyper-v-on-windows/user-guide/nested-virtualization-azure-virtual-network
+
+Autorestart of VM:
+https://www.cyberciti.biz/faq/rhel-centos-linux-kvm-virtualization-start-virtual-machine-guest/
+
+MIGRATION
+Try this: https://hgj.hu/live-migrating-a-virtual-machine-with-libvirt-without-a-shared-storage/
+https://libvirt.org/migration.html
+https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/6/html/virtualization_administration_guide/sect-virtualization-kvm_live_migration-live_kvm_migration_with_virsh
+http://sappyit.blogspot.com/2015/01/kvm-live-migration-without-shared.html
+
+LINKED IMAGES
+https://fabianlee.org/2018/09/24/kvm-implementing-linked-clones-with-a-backing-file/
+
+=================
+ISSUES
+=================
+virsh net-dhcp-leases shows empty output
+- https://bugzilla.redhat.com/show_bug.cgi?id=1375047
+
+https://docs.microsoft.com/en-us/virtualization/hyper-v-on-windows/user-guide/nested-virtualization-azure-virtual-network
+

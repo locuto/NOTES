@@ -1,0 +1,279 @@
+https://linuxhint.com/install-elasticsearch-logstash-and-kibana-elk-stack-ubuntu/
+https://www.edureka.co/blog/elk-stack-tutorial/
+
+This has syslog filter and such:
+https://www.digitalocean.com/community/tutorials/how-to-install-elasticsearch-logstash-and-kibana-elk-stack-on-ubuntu-14-04
+
+ports:
+Elasticsearch: 9200
+Kibana: 5601
+Logstash: 9600, 57407
+[root@rsyslogsvr log]# netstat -anp |grep 10745  (this 10745 is the Logstash process)
+tcp6       0      0 127.0.0.1:9600          :::*                    LISTEN      10745/java          
+tcp6       0      0 127.0.0.1:57407         127.0.0.1:9200          ESTABLISHED 10745/java 
+
+===========================
+UNIX USERS, DIRECTORIES ETC
+===========================
+Create a user 'elk' - or other in Linux
+-> Elasticsearch does not run as 'root'
+
+# mkdir /opt/elasticsearch
+# chown elk:elk /opt/elasticsearch
+
+# mkdir /opt/logstash
+# chown elk:elk /opt/logstash
+
+# mkdir /opt/kibana
+# chown elk:elk /opt/kibana
+
+======================
+ELASTICSEARCH
+======================
+
+- INSTALL
+Logon as 'elk' user.
+
+$ cd /opt/elasticsearch
+$ tar xvfzp /media/sf_mystage_host/elk/elasticsearch-6.4.2.tar.gz
+
+$ cd /opt/elasticsearch/elasticsearch-6.4.2/bin
+$ ./elasticsearch
+
+- VERIFY IN ANOTHER SCREEN
+Note: Wait a minute or two after starting elasticsearch to do this verification
+
+$ curl -X GET 'http://localhost:9200'
+{
+  "name" : "eqxpHaU",
+  "cluster_name" : "elasticsearch",
+  "cluster_uuid" : "Kyjhsj1PSzyPirDnq75d9A",
+  "version" : {
+    "number" : "6.4.2",
+    "build_flavor" : "default",
+    "build_type" : "tar",
+    "build_hash" : "04711c2",
+    "build_date" : "2018-09-26T13:34:09.098244Z",
+    "build_snapshot" : false,
+    "lucene_version" : "7.4.0",
+    "minimum_wire_compatibility_version" : "5.6.0",
+    "minimum_index_compatibility_version" : "5.0.0"
+  },
+  "tagline" : "You Know, for Search"
+}
+
+===============
+KIBANA
+===============
+https://www.elastic.co/guide/en/kibana/current/install.html
+
+- INSTALL
+
+Logon as user elk
+
+$ cd /opt/kibana
+$ tar xvfzp kibana-6.4.2-linux-x86_64.tar.gz
+
+$ cd /opt/kibana/kibana-6.4.2-linux-x86_64/bin
+$ ./kibana
+
+- VERIFY
+http://localhost:5601
+
+===============
+LOGSTASH
+===============
+https://www.elastic.co/guide/en/logstash/current/configuration.html
+
+- INSTALL
+Logon as user elk
+
+$ cd /opt/logstash
+$ tar xvfzp logstash*6.4.2.*gz
+
+Create a basic config file to read stdin
+
+$ cd /opt/logstash/logstash-6.4.2/config
+
+Create a file logstash-stdin.conf
+
+input { stdin { } }
+output {
+  elasticsearch { hosts => ["localhost:9200"] 
+                  index => "logstash-stdin-local"
+                }
+  stdout { codec => rubydebug }
+}
+
+
+$ cd /opt/logstash/logstash-6.4.2/bin
+./logstash -f ../config/logstash-stdin.conf
+
+Now, in the same screen enter a message, say "abc"
+Output on the same screen:
+{
+      "@version" => "1",
+       "message" => "abc",
+    "@timestamp" => 2018-10-05T16:08:34.687Z,
+          "host" => "oel75rac12cr2model"
+}
+
+Type in a few phrases onto the logstash screen (stdin).
+It will output a json with those inputs on the same screen (stdout)
+--> Also, by our config file setting, it would have sent it to elasticsearch also 
+                                                                  - with index name 'logstash-stdin-local'
+
+The stdin plugin is now waiting for input:
+[2018-10-15T09:44:38,226][INFO ][logstash.agent           ] Pipelines running {:count=>1, :running_pipelines=>[:main], :non_running_pipelines=>[]}
+[2018-10-15T09:44:39,209][INFO ][logstash.agent           ] Successfully started Logstash API endpoint {:port=>9600}
+aaaa
+{
+    "@timestamp" => 2018-10-15T04:18:49.201Z,
+          "host" => "rsyslogsvr",
+      "@version" => "1",
+       "message" => "aaaa"
+}
+bbbb
+{
+    "@timestamp" => 2018-10-15T04:18:52.700Z,
+          "host" => "rsyslogsvr",
+      "@version" => "1",
+       "message" => "bbbb"
+}
+
+======================================
+CASE 1 - VISUALIZE IN KIBANA - STDIN
+======================================
+In the logstash window (stdin), type in a few phrases  - after the messages from the tool itself.
+You will see JSON outputs for your inputs on the screen.
+--> They also would have been directed to elasticsearch along with to stdout
+    - as per logstash 'stdin' config file set up above
+--> You should be able to see it in Kibana
+
+input { stdin { } }
+output {
+  elasticsearch { hosts => ["localhost:9200"] 
+                  index => "logstash-stdin-local"
+                }
+  stdout { codec => rubydebug }
+}
+
+- TEST ON STDIN/STDOUT
+Do some stdin inputs as under 'SOME INPUTS' below and view the outputs on screen
+
+- CREATE KIBANA STUFF
+
+-- VIEW ELASTICSEARCH INDEX (created for the logstash stdin inputs)
+Go to Kibana UI in browser
+  View elasticsearch indexes under: -> 'Management' menu -> section Elasticsearch -> Index Management 
+     --> Here, you should be able to see logstash-stdin-local
+     
+-- DEFINE KIBANA 'INDEX PATTERN'
+In Kibana - define index pattern
+  -> 'Management' menu -> section Kibana -> Index Patterns
+  In that, 'add' a new pattern - by searching for logstash-stdin-local
+    Index Pattern = logstash-stdin-local
+    Timestamp (choose in drop down) = @timestamp
+    
+-- VIEW INDEX RECORDS
+In Kibana - go to 'Discover'
+ Here, you can see the index pattern 'logstash-stdin-local' and its records
+ -> IF RECORDS ARE NOT VISIBLE, change time-range (in the top right corner mostly)
+
+-- ADD A FEW MORE RECORDS
+In Logstash screen, input a few more messages
+View them in Kibana 'Discover'
+    
+
+
+
+
+
+
+
+
+== SOME INPUTS
+
+The stdin plugin is now waiting for input:
+[2018-10-15T09:44:38,226][INFO ][logstash.agent           ] Pipelines running {:count=>1, :running_pipelines=>[:main], :non_running_pipelines=>[]}
+[2018-10-15T09:44:39,209][INFO ][logstash.agent           ] Successfully started Logstash API endpoint {:port=>9600}
+aaaa
+{
+    "@timestamp" => 2018-10-15T04:18:49.201Z,
+          "host" => "rsyslogsvr",
+      "@version" => "1",
+       "message" => "aaaa"
+}
+bbbb
+{
+    "@timestamp" => 2018-10-15T04:18:52.700Z,
+          "host" => "rsyslogsvr",
+      "@version" => "1",
+       "message" => "bbbb"
+}
+cccc
+{
+    "@timestamp" => 2018-10-15T04:18:54.632Z,
+          "host" => "rsyslogsvr",
+      "@version" => "1",
+       "message" => "cccc"
+}
+aaaa
+{
+    "@timestamp" => 2018-10-15T04:18:56.962Z,
+          "host" => "rsyslogsvr",
+      "@version" => "1",
+       "message" => "aaaa"
+}
+cccc
+{
+    "@timestamp" => 2018-10-15T04:18:59.386Z,
+          "host" => "rsyslogsvr",
+      "@version" => "1",
+       "message" => "cccc"
+}
+bbbb
+{
+    "@timestamp" => 2018-10-15T04:19:00.978Z,
+          "host" => "rsyslogsvr",
+      "@version" => "1",
+       "message" => "bbbb"
+}
+
+===========
+PORTS
+===========
+stash/logstash-6.4.2/logstash-core/lib/jars/org.eclipse.text-3.5.101.jar:/opt/logstash/logstash-6.4.2/logstash-core/lib/jars/slf4j-api-1.7.25.jar org.logstash.Logstash -f ../config/logstash-stdin.conf
+root     13771  3905  0 11:21 pts/1    00:00:00 grep --color=auto logst
+[root@rsyslogsvr logs]# netstat -anp |grep 10745
+tcp6       0      0 127.0.0.1:9600          :::*                    LISTEN      10745/java          
+tcp6       0      0 127.0.0.1:57407         127.0.0.1:9200          ESTABLISHED 10745/java          
+unix  2      [ ]         STREAM     CONNECTED     52848    10745/java           
+unix  2      [ ]         STREAM     CONNECTED     52679    10745/java           
+[root@rsyslogsvr logs]# netstat -anp |grep 9600
+tcp6       0      0 127.0.0.1:9600          :::*                    LISTEN      10745/java          
+[root@rsyslogsvr logs]# netstat -anp | grep 57407
+tcp6       0      0 127.0.0.1:57407         127.0.0.1:9200          ESTABLISHED 10745/java          
+tcp6       0      0 127.0.0.1:9200          127.0.0.1:57407         ESTABLISHED 8846/java           
+[root@rsyslogsvr logs]# netstat -anp|grep 9200
+tcp        0      0 127.0.0.1:57361         127.0.0.1:9200          ESTABLISHED 8996/./../node/bin/ 
+tcp        0      0 127.0.0.1:57329         127.0.0.1:9200          ESTABLISHED 8996/./../node/bin/ 
+tcp        0      0 127.0.0.1:57328         127.0.0.1:9200          ESTABLISHED 8996/./../node/bin/ 
+tcp        0      0 127.0.0.1:57330         127.0.0.1:9200          ESTABLISHED 8996/./../node/bin/ 
+tcp        0      0 127.0.0.1:57360         127.0.0.1:9200          ESTABLISHED 8996/./../node/bin/ 
+tcp        0      0 127.0.0.1:57322         127.0.0.1:9200          ESTABLISHED 8996/./../node/bin/ 
+tcp        0      0 127.0.0.1:57331         127.0.0.1:9200          ESTABLISHED 8996/./../node/bin/ 
+tcp        0      0 127.0.0.1:57323         127.0.0.1:9200          ESTABLISHED 8996/./../node/bin/ 
+tcp6       0      0 127.0.0.1:9200          :::*                    LISTEN      8846/java           
+tcp6       0      0 ::1:9200                :::*                    LISTEN      8846/java           
+tcp6       0      0 127.0.0.1:9200          127.0.0.1:57322         ESTABLISHED 8846/java           
+tcp6       0      0 127.0.0.1:9200          127.0.0.1:57329         ESTABLISHED 8846/java           
+tcp6       0      0 127.0.0.1:57407         127.0.0.1:9200          ESTABLISHED 10745/java          
+tcp6       0      0 127.0.0.1:9200          127.0.0.1:57328         ESTABLISHED 8846/java           
+tcp6       0      0 127.0.0.1:9200          127.0.0.1:57323         ESTABLISHED 8846/java           
+tcp6       0      0 127.0.0.1:9200          127.0.0.1:57361         ESTABLISHED 8846/java           
+tcp6       0      0 127.0.0.1:9200          127.0.0.1:57360         ESTABLISHED 8846/java           
+tcp6       0      0 127.0.0.1:9200          127.0.0.1:57330         ESTABLISHED 8846/java           
+tcp6       0      0 127.0.0.1:9200          127.0.0.1:57407         ESTABLISHED 8846/java           
+tcp6       0      0 127.0.0.1:9200          127.0.0.1:57331         ESTABLISHED 8846/java           
+unix  3      [ ]         STREAM     CONNECTED     29200    703/dbus-daemon      /run/dbus/system_bus_socket

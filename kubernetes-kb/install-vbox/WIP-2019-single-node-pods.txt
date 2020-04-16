@@ -1,0 +1,2777 @@
+==========================================
+SINGLE NODE CLUSTER WITH PODS
+==========================================
+
+https://medium.com/containerum/4-ways-to-bootstrap-a-kubernetes-cluster-de0d5150a1e4
+https://blog.inkubate.io/deploy-kubernetes-1-9-from-scratch-on-vmware-vsphere/
+https://www.ibm.com/support/knowledgecenter/en/SSMNED_5.0.0/com.ibm.apic.install.doc/tapic_install_Kubernetes.html
+
+etcd as container - https://github.com/etcd-io/etcd/blob/master/Documentation/op-guide/container.md --> ETCD wit containers
+etcd security - https://github.com/etcd-io/etcd/blob/master/Documentation/op-guide/security.md  --> ETCD security, keys, certs
+
+apiserver as pod - https://github.com/kubernetes/kubeadm/issues/522
+apiserver as pod - https://github.com/kubernetes/kubernetes/issues/63899
+https://github.com/kubernetes/kubernetes/issues/51881
+kubeconfig file - https://stackoverflow.com/questions/31137692/how-to-let-kubelet-communicate-with-apiserver-by-using-https-v0-19/31285674
+certificate issue - https://stackoverflow.com/questions/46360361/invalid-x509-certificate-for-kubernetes-master
+certificate creation - https://kubernetes.io/docs/concepts/cluster-administration/certificates/
+certificate san -  https://kubernetes.io/docs/setup/best-practices/certificates/
+
+flannel certificate issue: 
+https://www.reddit.com/r/kubernetes/comments/8qkxmm/installing_flannel_in_kubernetes_cluster_chicken/
+https://github.com/coreos/flannel/blob/master/Documentation/configuration.md
+
+api access failing -  https://stackoverflow.com/questions/34306082/kubernetes-https-api-return-unauthorized
+
+kube-proxy install - https://github.com/kelseyhightower/intro-to-kubernetes-workshop/blob/master/labs/install-and-configure-kube-proxy.md
+
+Reference - https://unofficial-kubernetes.readthedocs.io/en/latest/admin/authorization/rbac/
+
+===================================
+MAIN THING TO UNDERSTAND
+===================================
+We are using this method below - from https://medium.com/containerum/4-ways-to-bootstrap-a-kubernetes-cluster-de0d5150a1e4
+--> It uses KUBELET to create pods of various components 
+    - THEREFORE, KUBELET IS NEEDED IN MASTER ALSO
+    
+Option 2: self-hosted
+This option is very similar to the previous one but instead of downloading binaries and running them in systemd, we will use container images with those components. Self-hosted means that we only launch kubelet binary in systemd. When it is running, it searches for manifests in /etc/kubernetes/manifests directory (where we will put the rest of components) and launches them in containers.
+First add the following flag to kubelet config: --pod-manifest-path=/etc/kubernetes/manifests
+
+===================================
+ABOUT POD IP ADDRESSES
+===================================
+These will run under host/vm IP address 
+- not the IP given by overlay networker like flannel/calico (or docker in the absence of flannel/calico
+- kube-apiserver, kube-controller-manager, kube-scheduler, kube-proxy, flannel/calico
+
+Overlay/Docker IP are given to all other pods (maybe there are some exceptions)
+
+=====================
+ESSENTIAL COMPONENTS
+=====================
+Note: In this case, we are insatalling everything of master and worker on the same node
+
+- MASTER
+kubelet(?) --> mostly required when we are deploying kube-nnnn components as pods using kubelet - to pick up from manifests
+kube-apiserver
+kube-scheduler
+kube-controller-manager
+
+
+- WORKER (aka NODE)
+kubelet
+kube-proxy
+kube-dns (or coredns) --> this is a pod which can have X number of replicas
+flannel
+
+=====================
+SEQUENCE
+=====================
+Install kubectl,kubelet, kubeadm
+Create certificates and kubeconfig files
+Create service files for etcd and kubelet
+Start ETCD
+Start kubelet - which will start apiserver, scheduler, controller-manager (first create their manifests & kubeconfig files)
+Start flannel (first, create flannel addon manifest)
+Start kube-proxy (first, create kube-proxy addon manifest)
+Start kube-dns (first, create kube-dns addon manifest)
+
+======
+VMs
+======
+One of these is used - mostly ks1 for no-certificates and ks2 for certificate based
+
+VM1= ks1
+IP = 192.168.60.101
+
+VM2= ks2
+IP = 192.168.60.102
+
+=========
+ETCD
+=========
+
+----
+File: /etc/environment
+----
+# ETCD RELATED ENVIRONMENT
+REGISTRY=quay.io/coreos/etcd
+# available from v3.2.5
+#REGISTRY=gcr.io/etcd-development/etcd
+
+# For each machine
+#ETCD_VERSION=latest
+ETCD_VERSION=v3.2.24
+# Note: TOKEN can be any string
+TOKEN=my-etcd-token
+CLUSTER_STATE=new
+CLUSTER="ks1=http://192.168.60.101:2380"
+DATA_DIR=/var/lib/etcd
+THIS_NAME=ks1
+THIS_IP=192.168.60.101
+
+----
+File: /etc/systemd/system/etcd.service:
+----
+[Unit]
+Description=etcd
+Documentation=https://github.com/coreos
+Wants=docker.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+IOSchedulingClass=2
+IOSchedulingPriority=0
+EnvironmentFile=/etc/environment
+
+# START ETCD
+ExecStart=/usr/bin/docker run --rm\
+  --net=host \
+  -p 2379:2379 \
+  -p 2380:2380 \
+  --volume=${DATA_DIR}:/etcd-data \
+  --name etcd ${REGISTRY}:${ETCD_VERSION} \
+  /usr/local/bin/etcd \
+  --data-dir=/etcd-data --name ${THIS_NAME} \
+  --initial-advertise-peer-urls http://${THIS_IP}:2380 --listen-peer-urls http://0.0.0.0:2380 \
+  --advertise-client-urls http://${THIS_IP}:2379 --listen-client-urls http://0.0.0.0:2379 \
+  --initial-cluster ${CLUSTER} \
+  --initial-cluster-state ${CLUSTER_STATE} --initial-cluster-token ${TOKEN}
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+
+
+- NOW, START ETCD SERVICE
+-- Reload the daemon configuration.
+systemctl daemon-reload
+
+-- Enable etcd to start at boot time.
+systemctl enable etcd
+
+-- Start etcd.
+systemctl start etcd
+
+-- Verify
+# ps -ef| grep etcd
+--> THE DOCKER COMMAND, INVOKED BY THE SERVICE
+root      7702     1  0 18:33 ?        00:00:00 /usr/bin/docker run --rm --net=host -p 2379:2379 -p 2380:2380 --volume=/var/lib/etcd:/etcd-data --name etcd quay.io/coreos/etcd:v3.2.24 /usr/local/bin/etcd --data-dir=/etcd-data --name ks1 --initial-advertise-peer-urls http://192.168.60.101:2380 --listen-peer-urls http://0.0.0.0:2380 --advertise-client-urls http://192.168.60.101:2379 --listen-client-urls http://0.0.0.0:2379 --initial-cluster ks1=http://192.168.60.101:2380 --initial-cluster-state new --initial-cluster-token my-etcd-token
+
+--> THE ETCD EXECUTABLE INSIDE CONTAINER
+root      7723  7708  0 18:33 ?        00:00:00 /usr/local/bin/etcd --data-dir=/etcd-data --name ks1 --initial-advertise-peer-urls http://192.168.60.101:2380 --listen-peer-urls http://0.0.0.0:2380 --advertise-client-urls http://192.168.60.101:2379 --listen-client-urls http://0.0.0.0:2379 --initial-cluster ks1=http://192.168.60.101:2380 --initial-cluster-state new --initial-cluster-token my-etcd-token
+
+-- Verify cluster members
+# docker exec -ti etcd /bin/sh
+/ # (now, this is etcd container's shell)
+
+/ # etcdctl member list
+438ee572a442fb6c: name=ks1 peerURLs=http://192.168.60.101:2380 clientURLs=http://192.168.60.101:2379 isLeader=true
+
+
+=================================
+CREATE CONFIG AND MANIFEST FILES
+=================================
+
+------------------------------------------
+/etc/kubernetes/kubelet-config.yaml:
+------------------------------------------
+(taken from https://medium.com/containerum/4-ways-to-bootstrap-a-kubernetes-cluster-de0d5150a1e4)
+
+apiVersion: v1
+clusters:
+- cluster:
+    server: http://127.0.0.1:8080
+  name: kubernetes-systemd
+contexts:
+- context:
+    cluster: kubernetes-systemd
+    user: system:node:ks1
+  name: system:node:ks1@kubernetes-systemd
+current-context: system:node:ks1@kubernetes-systemd
+kind: Config
+preferences: {}
+users:
+- name: system:node:ks1
+
+--- REFERENCE
+apiVersion: v1
+clusters:
+- cluster:
+    server: http://127.0.0.1:8080
+  name: kubernetes-systemd
+contexts:
+- context:
+    cluster: kubernetes-systemd
+    user: system:node:<HOSTNAME>
+  name: system:node:<HOSTNAME>@kubernetes-systemd
+current-context: system:node:<HOSTNAME>@kubernetes-systemd
+kind: Config
+preferences: {}
+users:
+- name: system:node:<HOSTNAME>
+
+------------------------------------------------------------------------------------
+/etc/kubernetes/manifests/kube-apiserver.yaml:
+------------------------------------------------------------------------------------
+NOTE:  "SecurityContextDeny" was removed from the following line - as it was disallowing kube-dns pod from creating
+        - --admission-control=NamespaceLifecycle,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota
+	
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    scheduler.alpha.kubernetes.io/critical-pod: ""
+  labels:
+    component: kube-apiserver
+    tier: control-plane
+  name: kube-apiserver
+  namespace: kube-system
+spec:
+  hostNetwork: true
+  containers:
+  - command:
+    - kube-apiserver
+    - --advertise-address=192.168.60.101
+    - --insecure-bind-address=127.0.0.1
+    - --bind-address=0.0.0.0
+    - --etcd-servers=http://192.168.60.101:2379
+    - --service-cluster-ip-range=10.96.0.0/12
+    - --admission-control=NamespaceLifecycle,LimitRanger,ServiceAccount,ResourceQuota
+    image: gcr.io/google_containers/kube-apiserver-amd64:v1.12.8
+    name: kube-apiserver
+
+--- REFERENCE
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    scheduler.alpha.kubernetes.io/critical-pod: ""
+  labels:
+    component: kube-apiserver
+    tier: control-plane
+  name: kube-apiserver
+  namespace: kube-system
+spec:
+  hostNetwork: true
+  containers:
+  - command:
+    - kube-apiserver
+    - --insecure-bind-address=127.0.0.1
+    - --etcd-servers=http://127.0.0.1:2379
+    - --service-cluster-ip-range=10.96.0.0/12
+    - --admission-control=NamespaceLifecycle,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota
+    image: gcr.io/google_containers/kube-apiserver-amd64:v1.9.6
+    name: kube-apiserver
+    
+------------------------------------------------------------------------------------
+/etc/kubernetes/manifests/kube-controller-manager.yaml:
+------------------------------------------------------------------------------------
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    scheduler.alpha.kubernetes.io/critical-pod: ""
+  labels:
+    component: kube-controller-manager
+    tier: control-plane
+  name: kube-controller-manager
+  namespace: kube-system
+spec:
+  containers:
+  - command:
+    - kube-controller-manager
+    - --cluster-name=kubernetes
+    - --master=http://127.0.0.1:8080
+    - --leader-elect=true
+    - --cluster-cidr=10.20.0.0/16
+    - --service-cluster-ip-range=10.96.0.0/12
+    image: gcr.io/google_containers/kube-controller-manager-amd64:v1.12.8
+    name: kube-controller-manager
+  hostNetwork: true
+
+--- REFERENCE 
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    scheduler.alpha.kubernetes.io/critical-pod: ""
+  labels:
+    component: kube-controller-manager
+    tier: control-plane
+  name: kube-controller-manager
+  namespace: kube-system
+spec:
+  containers:
+  - command:
+    - kube-controller-manager
+    - --master=http://127.0.0.1:8080
+    image: gcr.io/google_containers/kube-controller-manager-amd64:v1.9.6
+    name: kube-controller-manager
+  hostNetwork: true
+  
+------------------------------------------------------------------------------------
+/etc/kubernetes/manifests/kube-scheduler.yaml:
+------------------------------------------------------------------------------------
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    scheduler.alpha.kubernetes.io/critical-pod: ""
+  labels:
+    component: kube-scheduler
+    tier: control-plane
+  name: kube-scheduler
+  namespace: kube-system
+spec:
+  containers:
+  - command:
+    - kube-scheduler
+    - --master=http://127.0.0.1:8080
+    - --leader-elect=true
+    image: gcr.io/google_containers/kube-scheduler-amd64:v1.12.8
+    name: kube-scheduler
+  hostNetwork: true
+
+--- REFERENCE
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    scheduler.alpha.kubernetes.io/critical-pod: ""
+  labels:
+    component: kube-scheduler
+    tier: control-plane
+  name: kube-scheduler
+  namespace: kube-system
+spec:
+  containers:
+  - command:
+    - kube-scheduler
+    - --master=http://127.0.0.1:8080
+    image: gcr.io/google_containers/kube-scheduler-amd64:v1.9.6
+    name: kube-scheduler
+  hostNetwork: true
+
+----------------
+Kubelet service
+----------------
+Notes kubelet.txt - read about kubeconfig and config parameters
+
+NOTE:
+Installing kubelet also will install a couple of service files:
+/usr/lib/systemd/system/kubelet.service
+--> which references indirectly this - /usr/lib/systemd/system/kubelet.service.d/10-kubeadm.conf
+
+
+NOTE: IMPORTANT IMPORTANT - FOR FLANNEL
+If using flannel,
+1. Add this environment: (NOTE - ADD THIS AFTER YOU INSTALL FLANNEL, AND THEN RESTART KUBELET)
+Environment="KUBELET_NETWORK_ARGS=--network-plugin=cni --cni-conf-dir=/etc/cni/net.d --cni-bin-dir=/opt/cni/bin --node-ip=192.168.60.102"
+
+2. And in kubelet command in that file, reference that environment variable KUBELET_NETWORK_ARGS
+
+
+
+File: /usr/lib/systemd/system/kubelet.service.d/10-kubeadm.conf:
+(this is without Flannel related stuff mentioned above)
+
+# Note: This dropin only works with kubeadm and kubelet v1.11+
+[Service]
+# -- commented
+#Environment="KUBELET_KUBECONFIG_ARGS=--bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf --kubeconfig=/etc/kubernetes/kubelet.conf"
+# -- commented
+#Environment="KUBELET_CONFIG_ARGS=--config=/var/lib/kubelet/config.yaml"
+#
+# -- added
+Environment="KUBELET_CONFIG_ARGS=--kubeconfig=/etc/kubernetes/kubelet-config.yaml --pod-manifest-path=/etc/kubernetes/manifests"
+#
+# -- added (NOTE - ADD THIS AFTER YOU INSTALL FLANNEL, AND THEN RESTART KUBELET)
+Environment="KUBELET_NETWORK_ARGS=--network-plugin=cni --cni-conf-dir=/etc/cni/net.d --cni-bin-dir=/opt/cni/bin --node-ip=192.168.8.11"
+#
+# -- added
+Environment="KUBELET_DNS_ARGS=--cluster-dns=10.96.0.10 --cluster-domain=cluster.local"
+
+
+# This is a file that "kubeadm init" and "kubeadm join" generates at runtime, populating the KUBELET_KUBEADM_ARGS variable dynamically
+EnvironmentFile=-/var/lib/kubelet/kubeadm-flags.env
+# This is a file that the user can use for overrides of the kubelet args as a last resort. Preferably, the user should use
+# the .NodeRegistration.KubeletExtraArgs object in the configuration files instead. KUBELET_EXTRA_ARGS should be sourced from this file.
+EnvironmentFile=-/etc/sysconfig/kubelet
+ExecStart=
+ExecStart=/usr/bin/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_KUBEADM_ARGS $KUBELET_EXTRA_ARGS $KUBELET_NETWORK_ARGS $KUBELET_DNS_ARGS
+
+
+----------------
+START KUBELET
+----------------
+# systemctl enable kubelet
+# systemctl start kubelet
+
+# journalctl -fu kubelet
+Sep 13 16:44:26 ks1 kubelet[32231]: E0913 16:44:26.785734   32231 kubelet.go:2236] node "ks1" not found
+Sep 13 16:44:26 ks1 kubelet[32231]: E0913 16:44:26.889511   32231 kubelet.go:2236] node "ks1" not found
+Sep 13 16:44:26 ks1 kubelet[32231]: E0913 16:44:26.991825   32231 kubelet.go:2236] node "ks1" not found
+Sep 13 16:44:27 ks1 kubelet[32231]: I0913 16:44:27.112401   32231 kubelet_node_status.go:73] Successfully registered node ks1
+Sep 13 16:44:27 ks1 kubelet[32231]: I0913 16:44:27.125928   32231 reconciler.go:154] Reconciler: start to sync state
+--> The last two lines indicate that kubelet/cluster have started fully
+
+- VERIFY
+# kubectl get pods --all-namespaces
+NAMESPACE     NAME                          READY   STATUS    RESTARTS   AGE
+kube-system   kube-apiserver-ks1            1/1     Running   0          8m33s
+kube-system   kube-controller-manager-ks1   1/1     Running   0          8m57s
+kube-system   kube-scheduler-ks1            1/1     Running   0          8m50s
+
+
+===================================
+CERTIFICATES
+===================================
+NOTE: Same certificates are used for ETCD and Kubernetes 
+NOTE: 
+- "--client-ca-file=/etc/kubernetes/pki/ca.pem" in kubelet is important
+- "--client-ca-file=/etc/kubernetes/pki/ca.pem" in kube-apiserver is important
+- The element 'ST' could be something like 'MyCompany Inc'
+
+-----------------
+CREATE CA CERT
+-----------------
+
+ca-config.json file:
+
+{
+  "signing": {
+    "default": {
+      "expiry": "87600h"
+    },
+    "profiles": {
+      "kubernetes": {
+        "usages": ["signing", "key encipherment", "server auth", "client auth"],
+        "expiry": "87600h"
+      }
+    }
+  }
+}
+
+ca-csr.json file:
+
+{
+  "CN": "Kubernetes",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "IN",
+      "L": "INDIA",
+      "O": "Kubernetes",
+      "OU": "Kubernetes",
+      "ST": "Kubernetes"
+    }
+  ]
+}
+
+Run command: (ca-gen.sh)
+
+cfssl gencert -initca ca-csr.json | cfssljson -bare ca
+
+Get these:
+
+ca.csr - file containing the csr
+ca.pem - ca public certificate
+ca-key.pem - ca private key
+
+------------------------
+Admin client certificate
+------------------------
+This certificate will be used to connect to the Kubernetes cluster as an administrator.
+NOTE:  No IP/hostname for this
+
+admin-csr.json file:
+
+{
+  "CN": "admin",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "IN",
+      "L": "INDIA",
+      "O": "system:masters",
+      "OU": "Kubernetes",
+      "ST": "Kubernetes"
+    }
+  ]
+}
+
+Run command: (admin-gen.sh)
+
+cfssl gencert \
+-ca=ca.pem \
+-ca-key=ca-key.pem \
+-config=ca-config.json \
+-profile=kubernetes admin-csr.json | \
+cfssljson -bare admin
+
+Get these:
+
+admin.csr
+admin-key.pem
+admin.pem
+
+---------------------------
+Kubelet client certificates (worker node)
+---------------------------
+Kubelets will need a certificate to join the Kubernetes cluster
+NOTE: The IP is for the specific WORKER node
+
+kubelet-192.168.60.102-csr.json file:
+
+{
+  "CN": "system:node:192.168.60.102",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "IN",
+      "L": "INDIA",
+      "O": "system:nodes",
+      "OU": "Kubernetes",
+      "ST": "Kubernetes"
+    }
+  ]
+}
+
+Run command : (kubelet-192.168.60.102-gen.sh)
+NOTE: hostname has IP and hostname (not just IP as in the web 'deploying...' example)
+
+cfssl gencert \
+-ca=ca.pem \
+-ca-key=ca-key.pem \
+-config=ca-config.json \
+-hostname=192.168.60.102,ks2 \
+-profile=kubernetes kubelet-192.168.60.102-csr.json | \
+cfssljson -bare 192.168.60.102
+
+Get these:
+
+192.168.60.102.csr
+192.168.60.102-key.pem
+192.168.60.102.pem
+
+--------------------------------------------
+Generate the kube-proxy client certificate (worker nodes)
+--------------------------------------------
+
+kube-proxy-csr.json file:
+
+{
+  "CN": "system:kube-proxy",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "IN",
+      "L": "INDIA",
+      "O": "system:node-proxier",
+      "OU": "Kubernetes",
+      "ST": "Kubernetes"
+    }
+  ]
+}
+
+Run command: (kube-proxy-gen.sh)
+
+cfssl gencert \
+-ca=ca.pem -ca-key=ca-key.pem \
+-config=ca-config.json \
+-profile=kubernetes kube-proxy-csr.json | \
+cfssljson -bare kube-proxy
+
+Get these:
+kube-proxy.csr
+kube-proxy-key.pem
+kube-proxy.pem
+
+--------------------------------------------
+Generate the API server certificate
+--------------------------------------------
+
+kubernetes-csr.json file: 
+
+{
+  "CN": "kubernetes",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "IN",
+      "L": "INDIA",
+      "O": "Kubernetes",
+      "OU": "Kubernetes",
+      "ST": "Kubernetes"
+    }
+  ]
+}
+
+Run command : (kubernetes-gen.sh)
+NOTE: hostname has IP and hostname (not just IP as in the web 'deploying...' example)
+NOTE: 10.96.0.1 is derived from pod-ip cidr - with 1 at the end - this is assigned to apiserver pod by default
+
+cfssl gencert \
+-ca=ca.pem \
+-ca-key=ca-key.pem \
+-config=ca-config.json \
+-hostname=10.96.0.1,192.168.60.102,127.0.0.1,ks2,kubernetes.default \
+-profile=kubernetes kubernetes-csr.json | \
+cfssljson -bare kubernetes
+
+Get these:
+kubernetes.pem
+kubernetes-key.pem
+kubernetes.csr
+
+---------------------
+COPY THE CERTIFICATES
+---------------------
+NOTE: As this is single node, all pem files are copied off to same directory
+      In the case of master and worker being on different nodes copy different specific files to masters and workers
+
+mkdir /etc/kubernetes/pki
+chmod 755 /etc/kubernetes/pki
+
+cp *pem /etc/kubernetes/pki
+(master node part - ca.pem, ca-key.pem, kubernetes-key.pem kubernetes.pem )
+(worker node part - ca.pem, 192.168.60.102-key.pem, 192.168.60.102.pem )
+
+
+-------------------------------
+/etc/environment - with https
+-------------------------------
+# ETCD RELATED ENVIRONMENT
+REGISTRY=quay.io/coreos/etcd
+# available from v3.2.5
+#REGISTRY=gcr.io/etcd-development/etcd
+
+# For each machine
+#ETCD_VERSION=latest
+ETCD_VERSION=v3.2.24
+# Note: TOKEN can be any string
+TOKEN=my-etcd-token
+CLUSTER_STATE=new
+CLUSTER="ks2=https://192.168.60.102:2380"
+DATA_DIR=/var/lib/etcd
+THIS_NAME=ks2
+THIS_IP=192.168.60.102
+
+
+-------------------------------
+etcd.service - with certificates
+-------------------------------
+
+[Unit]
+Description=etcd
+Documentation=https://github.com/coreos
+Wants=docker.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+IOSchedulingClass=2
+IOSchedulingPriority=0
+EnvironmentFile=/etc/environment
+
+# START ETCD
+ExecStart=/usr/bin/docker run --rm\
+  --net=host \
+  -p 2379:2379 \
+  -p 2380:2380 \
+  --volume=${DATA_DIR}:/etcd-data \
+  --volume=/etc/kubernetes/pki:/etc/kubernetes/pki \
+  --name etcd ${REGISTRY}:${ETCD_VERSION} \
+  /usr/local/bin/etcd \
+  --data-dir=/etcd-data --name ${THIS_NAME} \
+  --initial-advertise-peer-urls https://${THIS_IP}:2380 --listen-peer-urls https://0.0.0.0:2380 \
+  --advertise-client-urls https://${THIS_IP}:2379 --listen-client-urls https://0.0.0.0:2379 \
+  --initial-cluster ${CLUSTER} \
+  --initial-cluster-state ${CLUSTER_STATE} --initial-cluster-token ${TOKEN} \
+  --cert-file=/etc/kubernetes/pki/kubernetes.pem \
+  --key-file=/etc/kubernetes/pki/kubernetes-key.pem \
+  --trusted-ca-file=/etc/kubernetes/pki/ca.pem \
+  --peer-cert-file=/etc/kubernetes/pki/kubernetes.pem \
+  --peer-key-file=/etc/kubernetes/pki/kubernetes-key.pem \
+  --peer-trusted-ca-file=/etc/kubernetes/pki/ca.pem 
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+
+
+- RESTART ETCD SERVICE (now with certificates)
+systemctl daemon-reload
+systemctl restart etcd
+
+# curl -k https://localhost:2379/v2/members
+{"members":[{"id":"e0d7d7f828fc57ec","name":"ks2","peerURLs":["https://192.168.60.102:2380"],"clientURLs":["https://192.168.60.102:2379"]}]}
+
+# curl -k https://localhost:2379/health
+{"health": "true"}
+
+SOLVED (TBD): 'etcdctl' command is erroring out, though API works fine
+	[root@ksn1 system]# docker exec -ti etcd etcdctl member list
+	client: etcd cluster is unavailable or misconfigured; error #0: malformed HTTP response "\x15\x03\x01\x00\x02\x02"
+	; error #1: dial tcp 127.0.0.1:4001: getsockopt: connection refused
+
+# docker exec -ti etcd /bin/sh
+Now, inside the etcd container (note - /etc/kubernetes/pki of host is mounted on this container as done in etcd.service)
+~# cd /etc/kubernetes/pki
+/etc/kubernetes/pki # ETCDCTL_API=3 etcdctl --cacert=./ca.pem --cert=./kubernetes.pem --key=./kubernetes-key.pem member list
+--> OUTPUT IS OK:
+5b1fda1c3621a072, started, ksn1, https://192.168.8.11:2380, https://192.168.8.11:2379
+
+
+----------------------
+kube-apiserver.yaml
+----------------------
+NOTE: "SecurityContextDeny" was removed from the following line - as it was disallowing kube-dns pod from creating
+    - --admission-control=NamespaceLifecycle,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota
+    
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    scheduler.alpha.kubernetes.io/critical-pod: ""
+  labels:
+    component: kube-apiserver
+    tier: control-plane
+  name: kube-apiserver
+  namespace: kube-system
+spec:
+  hostNetwork: true
+  containers:
+  - command:
+    - kube-apiserver
+    - --allow-privileged=true
+    - --advertise-address=192.168.60.102
+    - --insecure-bind-address=127.0.0.1
+    - --bind-address=0.0.0.0
+    - --etcd-servers=https://192.168.60.102:2379
+    - --service-cluster-ip-range=10.96.0.0/12
+    - --admission-control=NamespaceLifecycle,LimitRanger,ServiceAccount,ResourceQuota
+    - --client-ca-file=/etc/kubernetes/pki/ca.pem
+    - --etcd-cafile=/etc/kubernetes/pki/ca.pem 
+    - --etcd-certfile=/etc/kubernetes/pki/kubernetes.pem 
+    - --etcd-keyfile=/etc/kubernetes/pki/kubernetes-key.pem 
+    - --kubelet-certificate-authority=/etc/kubernetes/pki/ca.pem 
+    - --kubelet-client-certificate=/etc/kubernetes/pki/kubernetes.pem 
+    - --kubelet-client-key=/etc/kubernetes/pki/kubernetes-key.pem 
+    - --service-account-key-file=/etc/kubernetes/pki/ca-key.pem 
+    - --tls-cert-file=/etc/kubernetes/pki/kubernetes.pem 
+    - --tls-private-key-file=/etc/kubernetes/pki/kubernetes-key.pem
+    - --secure-port=6443
+    image: gcr.io/google_containers/kube-apiserver-amd64:v1.12.8
+    name: kube-apiserver
+    volumeMounts:
+    - mountPath: /etc/kubernetes/pki
+      name: k8s-certs
+  volumes:
+  - hostPath:
+      path: /etc/kubernetes/pki
+      type: Directory
+    name: k8s-certs
+
+----------------------------
+kube-controller-manager.yaml
+----------------------------
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    scheduler.alpha.kubernetes.io/critical-pod: ""
+  labels:
+    component: kube-controller-manager
+    tier: control-plane
+  name: kube-controller-manager
+  namespace: kube-system
+spec:
+  hostNetwork: true
+  containers:
+  - command:
+    - kube-controller-manager
+    - --cluster-name=kubernetes
+    - --master=http://127.0.0.1:8080
+    - --leader-elect=true
+    - --cluster-cidr=10.20.0.0/16
+    - --service-cluster-ip-range=10.96.0.0/12
+    - --cluster-signing-cert-file=/etc/kubernetes/pki/ca.pem 
+    - --cluster-signing-key-file=/etc/kubernetes/pki/ca-key.pem
+    - --root-ca-file=/etc/kubernetes/pki/ca.pem
+    - --service-account-private-key-file=/etc/kubernetes/pki/ca-key.pem
+    image: gcr.io/google_containers/kube-controller-manager-amd64:v1.12.8
+    name: kube-controller-manager
+    volumeMounts:
+    - mountPath: /etc/kubernetes/pki
+      name: k8s-certs
+      readOnly: true
+  volumes:
+  - hostPath:
+      path: /etc/kubernetes/pki
+      type: Directory
+    name: k8s-certs
+
+--------------------
+kube-scheduler.yaml
+--------------------
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    scheduler.alpha.kubernetes.io/critical-pod: ""
+  labels:
+    component: kube-scheduler
+    tier: control-plane
+  name: kube-scheduler
+  namespace: kube-system
+spec:
+  containers:
+  - command:
+    - kube-scheduler
+    - --master=http://127.0.0.1:8080
+    - --leader-elect=true
+    image: gcr.io/google_containers/kube-scheduler-amd64:v1.12.8
+    name: kube-scheduler
+  hostNetwork: true
+
+------------------
+CREATE CLUSTER
+------------------
+systemctl start etcd
+systemctl start kubelet
+
+------------------
+VERIFY
+------------------
+NOTE: IP of these pods are of the VM itself 
+
+# kubectl get pods --all-namespaces -o wide
+NAMESPACE     NAME                          READY   STATUS    RESTARTS   AGE     IP               NODE   NOMINATED NODE
+kube-system   kube-apiserver-ks2            1/1     Running   0          44h     192.168.60.102   ks2    <none>
+kube-system   kube-controller-manager-ks2   1/1     Running   1          6d18h   192.168.60.102   ks2    <none>
+kube-system   kube-scheduler-ks2            1/1     Running   1          6d18h   192.168.60.102   ks2    <none>
+
+
+------------------
+CREATE A POD
+------------------
+This is giving error now 
+
+# kubectl run access --rm -ti --image busybox /bin/sh
+
+kubectl run --generator=deployment/apps.v1beta1 is DEPRECATED and will be removed in a future version. Use kubectl create instead.
+If you don't see a command prompt, try pressing enter.
+Error attaching, falling back to logs: error dialing backend: x509: certificate signed by unknown authority
+deployment.apps "access" deleted
+Error from server: Get https://ks2:10250/containerLogs/default/access-56ff88b445-gstms/access: x509: certificate signed by unknown authority
+
+-----------------------------------
+KUBECONFIG AND SECURITY FOR KUBELET
+-----------------------------------
+
+Script: kubeconfig-kubelet-gen.sh
+
+-  CREATE A kubeconfig FILE FOR KUBELET - 192.168.60.102.kubeconfig
+# Add the cluster information for 192.168.60.102
+kubectl config set-cluster kubernetes \
+--certificate-authority=ca.pem \
+--embed-certs=true \
+--server=https://192.168.60.102:6443 \
+--kubeconfig=192.168.60.102.kubeconfig
+
+# Add the credentials for 192.168.60.102.
+
+kubectl config set-credentials system:node:192.168.60.102 \
+--client-certificate=192.168.60.102.pem \
+--client-key=192.168.60.102-key.pem \
+--embed-certs=true \
+--kubeconfig=192.168.60.102.kubeconfig
+
+# Add the context for 192.168.60.102.
+
+kubectl config set-context default \
+--cluster=kubernetes \
+--user=system:node:192.168.60.102 \
+--kubeconfig=192.168.60.102.kubeconfig
+
+# Use the context for 192.168.60.102.
+kubectl config use-context default --kubeconfig=192.168.60.102.kubeconfig
+
+-- THEN, COPY THAT FILE TO /etc/kubernetes/kubelet-kubeconfig
+cp 192.168.60.102.kubeconfig /etc/kubernetes/kubelet-kubeconfig
+
+-- ALSO, COPY THE KUBECONFIG FILE TO ~/.kube/config
+cp /etc/kubernetes/kubelet-kubeconfig ~/.kube/config
+--> This will enable the context (or something) for the linux session
+--> and the following command gives the current context if set in ~/.kube/config
+# kubectl config get-contexts 
+CURRENT   NAME      CLUSTER      AUTHINFO                   NAMESPACE
+*         default   kubernetes   system:node:192.168.60.102
+
+
+- MODIFY kubelet.service file /usr/lib/systemd/system/10-kubeadm.conf
+NOTE: 1. allow-privileged is necessary for creating kube-proxy and such
+      2. /var/lab/kubelet/... for key locations are replaced with /etc/kubernetes/pki
+
+
+NOTE: IMPORTANT IMPORTANT IMPORTNT
+IF USING FLANNEL:
+1. Add this environment: (NOTE - ADD THIS AFTER YOU INSTALL FLANNEL, AND THEN RESTART KUBELET)
+Environment="KUBELET_NETWORK_ARGS=--network-plugin=cni --cni-conf-dir=/etc/cni/net.d --cni-bin-dir=/opt/cni/bin --node-ip=192.168.60.102"
+
+2. And in kubelet command in that file, reference that environment variable KUBELET_NETWORK_ARGS
+
+
+File: /usr/lib/systemd/system/kubelet.service.d/10-kubeadm.conf
+(without flannel settings mentioned above)
+
+# Note: This dropin only works with kubeadm and kubelet v1.11+
+[Service]
+# -- commented
+#Environment="KUBELET_KUBECONFIG_ARGS=--bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf --kubeconfig=/etc/kubernetes/kubelet.conf"
+# -- commented
+#Environment="KUBELET_CONFIG_ARGS=--config=/var/lib/kubelet/config.yaml"
+#
+# -- added
+Environment="KUBELET_CONFIG_ARGS=--kubeconfig=/etc/kubernetes/kubelet-config.yaml --pod-manifest-path=/etc/kubernetes/manifests"
+# -- added (NOTE - ADD THIS AFTER YOU INSTALL FLANNEL, AND THEN RESTART KUBELET)
+Environment="KUBELET_NETWORK_ARGS=--network-plugin=cni --cni-conf-dir=/etc/cni/net.d --cni-bin-dir=/opt/cni/bin --node-ip=192.168.8.11"
+#
+# -- added
+Environment="KUBELET_DNS_ARGS=--cluster-dns=10.96.0.10 --cluster-domain=cluster.local"
+
+# This is a file that "kubeadm init" and "kubeadm join" generates at runtime, populating the KUBELET_KUBEADM_ARGS variable dynamically
+EnvironmentFile=-/var/lib/kubelet/kubeadm-flags.env
+# This is a file that the user can use for overrides of the kubelet args as a last resort. Preferably, the user should use
+# the .NodeRegistration.KubeletExtraArgs object in the configuration files instead. KUBELET_EXTRA_ARGS should be sourced from this file.
+EnvironmentFile=-/etc/sysconfig/kubelet
+ExecStart=
+ExecStart=/usr/bin/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_KUBEADM_ARGS $KUBELET_EXTRA_ARGS $KUBELET_NETWORK_ARGS $KUBELET_DNS_ARGS  --client-ca-file=/etc/kubernetes/pki/ca.pem --tls-cert-file=/etc/kubernetes/pki/192.168.60.102.pem --tls-private-key-file=/etc/kubernetes/pki/192.168.60.102-key.pem --kubeconfig=/etc/kubernetes/kubelet-kubeconfig --allow-privileged
+
+- RESTART KUBELET
+systemctl daemon-reload
+systemctl restart kubelet
+journalctl -fu kubelet
+
+--> At this time kubelet did not start properly - see 'ERROR 1' down below
+
+- TO FIX - ADD HOSTNAME ALSO TO CERTIFICATES (EARLIER THOUGHT creating ClusterRole and ClusterRoleBinding will help, but that is not correct fix) 
+
+- RESTART KUBELET
+systemctl start kubelet
+journalctl -fu kubelet
+kubectl get nodes -o wide
+curl --cacert ./ca.pem https://192.168.60.102:6443/version
+netstat -anp |grep 6443
+
+WORKING ITEMS:
+--> This time it seemed to start properly and nodes were listed (see logs below)
+
+--> Also 'role' for node in kubectl get nodes is 'none' instead of master or worker 
+    - This is ok - it is because it is both master and worker
+ 
+FIXED ITEMS:
+--> And, a busybee pod creation got some errors
+	- these went away after adding ks2 as hostname in kubelet and kubernetes cert generation steps
+	
+TBD ITEMS:
+--> However, curl to API does not work yet (see listings below)
+--> WORKS - curl https://192.168.60.102:6443 --key ./admin-key.pem --cert ./admin.pem --cacert ./ca.pem
+--> DOES NOT WORK - curl --cacert ./ca.pem https://192.168.60.102:6443/version
+
+	TO FIX - need to get a token
+	- see - https://stackoverflow.com/questions/34306082/kubernetes-https-api-return-unauthorized
+	- and also the 'deploy on vmware' document
+	
+
+
+[root@ks2 certs]# systemctl start kubelet; journalctl -fu kubelet;
+-- Logs begin at Wed 2019-08-14 13:59:42 IST. --
+Aug 14 18:35:52 ks2 kubelet[28500]: I0814 18:35:52.070153   28500 cpu_manager.go:156] [cpumanager] reconciling every 10s
+Aug 14 18:35:52 ks2 kubelet[28500]: I0814 18:35:52.070164   28500 policy_none.go:42] [cpumanager] none policy: Start
+Aug 14 18:35:52 ks2 kubelet[28500]: I0814 18:35:52.181498   28500 reconciler.go:207] operationExecutor.VerifyControllerAttachedVolume started for volume "k8s-certs" (UniqueName: "kubernetes.io/host-path/54e421728991976be2cb402ba87859f9-k8s-certs") pod "kube-apiserver-ks2" (UID: "54e421728991976be2cb402ba87859f9")
+Aug 14 18:35:52 ks2 kubelet[28500]: I0814 18:35:52.181551   28500 reconciler.go:207] operationExecutor.VerifyControllerAttachedVolume started for volume "k8s-certs" (UniqueName: "kubernetes.io/host-path/d95dcce69327a2d64d92144e1f40b5f1-k8s-certs") pod "kube-controller-manager-ks2" (UID: "d95dcce69327a2d64d92144e1f40b5f1")
+Aug 14 18:35:52 ks2 kubelet[28500]: I0814 18:35:52.181573   28500 reconciler.go:154] Reconciler: start to sync state
+Aug 14 18:35:52 ks2 kubelet[28500]: E0814 18:35:52.604791   28500 kubelet.go:1637] Failed creating a mirror pod for "kube-scheduler-ks2_kube-system(50c22c6953e39f9c091c1e41cf6efa3b)": pods "kube-scheduler-ks2" already exists
+Aug 14 18:35:53 ks2 kubelet[28500]: W0814 18:35:53.358954   28500 kubelet_getters.go:271] Path "/var/lib/kubelet/pods/24885ad2245b362846991d1569f43690/volumes" does not exist
+Aug 14 18:36:09 ks2 systemd[1]: Stopping kubelet: The Kubernetes Node Agent...
+Aug 14 18:36:09 ks2 systemd[1]: Stopped kubelet: The Kubernetes Node Agent.
+Aug 14 18:56:07 ks2 systemd[1]: Started kubelet: The Kubernetes Node Agent.
+Aug 14 18:56:07 ks2 kubelet[29087]: Flag --pod-manifest-path has been deprecated, This parameter should be set via the config file specified by the Kubelet's --config flag. See https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/ for more information.
+Aug 14 18:56:07 ks2 kubelet[29087]: Flag --client-ca-file has been deprecated, This parameter should be set via the config file specified by the Kubelet's --config flag. See https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/ for more information.
+Aug 14 18:56:07 ks2 kubelet[29087]: Flag --tls-cert-file has been deprecated, This parameter should be set via the config file specified by the Kubelet's --config flag. See https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/ for more information.
+Aug 14 18:56:07 ks2 kubelet[29087]: Flag --tls-private-key-file has been deprecated, This parameter should be set via the config file specified by the Kubelet's --config flag. See https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/ for more information.
+Aug 14 18:56:07 ks2 kubelet[29087]: Flag --authorization-mode has been deprecated, This parameter should be set via the config file specified by the Kubelet's --config flag. See https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/ for more information.
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.151020   29087 server.go:408] Version: v1.12.8
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.151157   29087 plugins.go:99] No cloud provider specified.
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.302441   29087 server.go:667] --cgroups-per-qos enabled, but --cgroup-root was not specified.  defaulting to /
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.302720   29087 container_manager_linux.go:247] container manager verified user specified cgroup-root exists: []
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.302731   29087 container_manager_linux.go:252] Creating Container Manager object based on Node Config: {RuntimeCgroupsName: SystemCgroupsName: KubeletCgroupsName: ContainerRuntime:docker CgroupsPerQOS:true CgroupRoot:/ CgroupDriver:cgroupfs KubeletRootDir:/var/lib/kubelet ProtectKernelDefaults:false NodeAllocatableConfig:{KubeReservedCgroupName: SystemReservedCgroupName: EnforceNodeAllocatable:map[pods:{}] KubeReserved:map[] SystemReserved:map[] HardEvictionThresholds:[{Signal:nodefs.available Operator:LessThan Value:{Quantity:<nil> Percentage:0.1} GracePeriod:0s MinReclaim:<nil>} {Signal:nodefs.inodesFree Operator:LessThan Value:{Quantity:<nil> Percentage:0.05} GracePeriod:0s MinReclaim:<nil>} {Signal:imagefs.available Operator:LessThan Value:{Quantity:<nil> Percentage:0.15} GracePeriod:0s MinReclaim:<nil>} {Signal:memory.available Operator:LessThan Value:{Quantity:100Mi Percentage:0} GracePeriod:0s MinReclaim:<nil>}]} QOSReserved:map[] ExperimentalCPUManagerPolicy:none ExperimentalCPUManagerReconcilePeriod:10s ExperimentalPodPidsLimit:-1 EnforceCPULimits:true CPUCFSQuotaPeriod:100ms}
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.302808   29087 container_manager_linux.go:271] Creating device plugin manager: true
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.302836   29087 state_mem.go:36] [cpumanager] initializing new in-memory state store
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.302926   29087 state_mem.go:84] [cpumanager] updated default cpuset: ""
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.302936   29087 state_mem.go:92] [cpumanager] updated cpuset assignments: "map[]"
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.303003   29087 kubelet.go:279] Adding pod path: /etc/kubernetes/manifests
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.303026   29087 kubelet.go:304] Watching apiserver
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.324165   29087 client.go:75] Connecting to docker on unix:///var/run/docker.sock
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.324185   29087 client.go:104] Start docker client with request timeout=2m0s
+Aug 14 18:56:07 ks2 kubelet[29087]: W0814 18:56:07.398077   29087 docker_service.go:540] Hairpin mode set to "promiscuous-bridge" but kubenet is not enabled, falling back to "hairpin-veth"
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.398103   29087 docker_service.go:236] Hairpin mode set to "hairpin-veth"
+Aug 14 18:56:07 ks2 kubelet[29087]: W0814 18:56:07.398165   29087 cni.go:188] Unable to update cni config: No networks found in /etc/cni/net.d
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.401798   29087 docker_service.go:251] Docker cri networking managed by kubernetes.io/no-op
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.422786   29087 docker_service.go:256] Docker Info: &{ID:KS4G:JVF5:BFCF:ER3E:4DCO:W73D:RLCY:3WRI:PAIY:LL2G:6FJX:DDC5 Containers:7 ContainersRunning:7 ContainersPaused:0 ContainersStopped:0 Images:7 Driver:overlay2 DriverStatus:[[Backing Filesystem xfs] [Supports d_type true] [Native Overlay Diff true]] SystemStatus:[] Plugins:{Volume:[local] Network:[bridge host ipvlan macvlan null overlay] Authorization:[] Log:[awslogs fluentd gcplogs gelf journald json-file local logentries splunk syslog]} MemoryLimit:true SwapLimit:true KernelMemory:true CPUCfsPeriod:true CPUCfsQuota:true CPUShares:true CPUSet:true IPv4Forwarding:true BridgeNfIptables:true BridgeNfIP6tables:true Debug:false NFd:62 OomKillDisable:true NGoroutines:76 SystemTime:2019-08-14T18:56:07.402841739+05:30 LoggingDriver:json-file CgroupDriver:cgroupfs NEventsListener:0 KernelVersion:3.10.0-957.el7.x86_64 OperatingSystem:CentOS Linux 7 (Core) OSType:linux Architecture:x86_64 IndexServerAddress:https://index.docker.io/v1/ RegistryConfig:0xc4209dff80 NCPU:1 MemTotal:2096295936 GenericResources:[] DockerRootDir:/var/lib/docker HTTPProxy: HTTPSProxy: NoProxy: Name:ks2 Labels:[] ExperimentalBuild:false ServerVersion:19.03.1 ClusterStore: ClusterAdvertise: Runtimes:map[runc:{Path:runc Args:[]}] DefaultRuntime:runc Swarm:{NodeID: NodeAddr: LocalNodeState:inactive ControlAvailable:false Error: RemoteManagers:[] Nodes:0 Managers:0 Cluster:<nil>} LiveRestoreEnabled:false Isolation: InitBinary:docker-init ContainerdCommit:{ID:894b81a4b802e4eb2a91d1ce216b8817763c29fb Expected:894b81a4b802e4eb2a91d1ce216b8817763c29fb} RuncCommit:{ID:425e105d5a03fabd737a126ad93d62a9eeede87f Expected:425e105d5a03fabd737a126ad93d62a9eeede87f} InitCommit:{ID:fec3683 Expected:fec3683} SecurityOptions:[name=seccomp,profile=default]}
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.422840   29087 docker_service.go:269] Setting cgroupDriver to cgroupfs
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.564337   29087 kuberuntime_manager.go:197] Container runtime docker initialized, version: 19.03.1, apiVersion: 1.40.0
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.620059   29087 server.go:1013] Started kubelet
+Aug 14 18:56:07 ks2 kubelet[29087]: E0814 18:56:07.620502   29087 kubelet.go:1287] Image garbage collection failed once. Stats initialization may not have completed yet: failed to get imageFs info: unable to find data in memory cache
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.620929   29087 fs_resource_analyzer.go:66] Starting FS ResourceAnalyzer
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.620948   29087 status_manager.go:152] Starting to sync pod status with apiserver
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.620959   29087 kubelet.go:1804] Starting kubelet main sync loop.
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.620975   29087 kubelet.go:1821] skipping pod synchronization - [container runtime is down PLEG is not healthy: pleg was last seen active 2562047h47m16.854775807s ago; threshold is 3m0s]
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.621059   29087 server.go:133] Starting to listen on 0.0.0.0:10250
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.621476   29087 server.go:318] Adding debug handlers to kubelet server.
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.622641   29087 volume_manager.go:248] Starting Kubelet Volume Manager
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.632117   29087 desired_state_of_world_populator.go:130] Desired state populator starts to run
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.727478   29087 kubelet.go:1821] skipping pod synchronization - [container runtime is down]
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.727518   29087 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.881972   29087 kubelet_node_status.go:70] Attempting to register node ks2
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.921860   29087 kubelet_node_status.go:112] Node ks2 was previously registered
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.921880   29087 kubelet_node_status.go:73] Successfully registered node ks2
+Aug 14 18:56:07 ks2 kubelet[29087]: I0814 18:56:07.950837   29087 kubelet.go:1821] skipping pod synchronization - [container runtime is down]
+Aug 14 18:56:08 ks2 kubelet[29087]: I0814 18:56:08.129149   29087 setters.go:518] Node became not ready: {Type:Ready Status:False LastHeartbeatTime:2019-08-14 18:56:08.129133899 +0530 IST m=+1.100086773 LastTransitionTime:2019-08-14 18:56:08.129133899 +0530 IST m=+1.100086773 Reason:KubeletNotReady Message:container runtime is down}
+Aug 14 18:56:08 ks2 kubelet[29087]: I0814 18:56:08.210657   29087 cpu_manager.go:155] [cpumanager] starting with none policy
+Aug 14 18:56:08 ks2 kubelet[29087]: I0814 18:56:08.210674   29087 cpu_manager.go:156] [cpumanager] reconciling every 10s
+Aug 14 18:56:08 ks2 kubelet[29087]: I0814 18:56:08.210682   29087 policy_none.go:42] [cpumanager] none policy: Start
+Aug 14 18:56:08 ks2 kubelet[29087]: E0814 18:56:08.366719   29087 kubelet.go:1637] Failed creating a mirror pod for "kube-apiserver-ks2_kube-system(54e421728991976be2cb402ba87859f9)": pods "kube-apiserver-ks2" already exists
+Aug 14 18:56:08 ks2 kubelet[29087]: E0814 18:56:08.368833   29087 kubelet.go:1637] Failed creating a mirror pod for "kube-scheduler-ks2_kube-system(50c22c6953e39f9c091c1e41cf6efa3b)": pods "kube-scheduler-ks2" already exists
+Aug 14 18:56:08 ks2 kubelet[29087]: E0814 18:56:08.373922   29087 kubelet.go:1637] Failed creating a mirror pod for "kube-controller-manager-ks2_kube-system(d95dcce69327a2d64d92144e1f40b5f1)": pods "kube-controller-manager-ks2" already exists
+Aug 14 18:56:08 ks2 kubelet[29087]: I0814 18:56:08.512351   29087 reconciler.go:207] operationExecutor.VerifyControllerAttachedVolume started for volume "k8s-certs" (UniqueName: "kubernetes.io/host-path/54e421728991976be2cb402ba87859f9-k8s-certs") pod "kube-apiserver-ks2" (UID: "54e421728991976be2cb402ba87859f9")
+Aug 14 18:56:08 ks2 kubelet[29087]: I0814 18:56:08.512535   29087 reconciler.go:207] operationExecutor.VerifyControllerAttachedVolume started for volume "k8s-certs" (UniqueName: "kubernetes.io/host-path/d95dcce69327a2d64d92144e1f40b5f1-k8s-certs") pod "kube-controller-manager-ks2" (UID: "d95dcce69327a2d64d92144e1f40b5f1")
+Aug 14 18:56:08 ks2 kubelet[29087]: I0814 18:56:08.512560   29087 reconciler.go:154] Reconciler: start to sync state
+^C
+
+[root@ks2 certs]# kubectl get nodes -o wide
+NAME   STATUS   ROLES    AGE   VERSION   INTERNAL-IP      EXTERNAL-IP   OS-IMAGE                KERNEL-VERSION          CONTAINER-RUNTIME
+ks2    Ready    <none>   21m   v1.12.8   192.168.60.102   <none>        CentOS Linux 7 (Core)   3.10.0-957.el7.x86_64   docker://19.3.1
+
+[root@ks2 certs]# netstat -anp |grep 6443
+tcp        0      0 192.168.60.102:49812    192.168.60.102:6443     ESTABLISHED 29087/kubelet       
+tcp6       0      0 :::6443                 :::*                    LISTEN      27797/kube-apiserve 
+tcp6       0      0 ::1:6443                ::1:56884               ESTABLISHED 27797/kube-apiserve 
+tcp6       0      0 ::1:56884               ::1:6443                ESTABLISHED 27797/kube-apiserve 
+tcp6       0      0 192.168.60.102:6443     192.168.60.102:49812    ESTABLISHED 27797/kube-apiserve 
+
+
+- CREATE BUSYBEE POD
+(expected behaviour below)
+# kubectl run access --rm -ti --image busybox /bin/sh
+kubectl run --generator=deployment/apps.v1beta1 is DEPRECATED and will be removed in a future version. Use kubectl create instead.
+If you don't see a command prompt, try pressing enter.
+/ # 
+/ # hostname
+access-56ff88b445-z5968
+/ # exit
+Session ended, resume using 'kubectl attach access-56ff88b445-z5968 -c access -i -t' command when the pod is running
+deployment.apps "access" deleted
+[root@ks2 ~]# kubectl get pods
+NAME                      READY   STATUS        RESTARTS   AGE
+access-56ff88b445-z5968   0/1     Terminating   0          77s
+
+
+Earlier errors - when ks2 hostname was not applied to kubelet and apiserver certificates
+	# kubectl run access --rm -ti --image busybox /bin/sh
+	kubectl run --generator=deployment/apps.v1beta1 is DEPRECATED and will be removed in a future version. Use kubectl create instead.
+	If you don't see a command prompt, try pressing enter.
+	Error attaching, falling back to logs: error dialing backend: x509: certificate is not valid for any names, but wanted to match ks2
+
+	# kubectl config get-contexts
+	CURRENT   NAME      CLUSTER      AUTHINFO                     NAMESPACE
+	*         default   kubernetes   system:node:192.168.60.102 
+
+	# kubectl get pods
+	NAME                      READY   STATUS    RESTARTS   AGE
+	access-56ff88b445-k4vql   1/1     Running   0          11m
+	
+	[root@ks2 .kube]# kubectl exec -ti access-56ff88b445-k4vql /bin/sh
+	Error from server: error dialing backend: x509: certificate is not valid for any names, but wanted to match ks2
+
+TO FIX: CREATE CLUSTERROLE AND CLUSTERROLEBINDING --> SEE BELOW
+======================================================================
+CREATE ClusterRole and ClusterRoleBinding
+======================================================================
+To make apiserver talk to kubelets in woker nodes (here, same node)
+- create a ClusterRole and ClusterRoleBinding
+
+1. kube-apiserver-to-kubelet.yaml
+
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  annotations:
+    rbac.authorization.kubernetes.io/autoupdate: "true"
+  labels:
+    kubernetes.io/bootstrapping: rbac-defaults
+  name: system:kube-apiserver-to-kubelet
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - nodes/proxy
+      - nodes/stats
+      - nodes/log
+      - nodes/spec
+      - nodes/metrics
+    verbs:
+      - "*"
+
+1a. Create the cluster-role:
+kubectl create -f kube-apiserver-to-kubelet.yaml
+
+--> clusterrole.rbac.authorization.k8s.io/system:kube-apiserver-to-kubelet created
+
+2. kube-apiserver-to-kubelet-bind.yaml
+
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: system:kube-apiserver
+  namespace: ""
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:kube-apiserver-to-kubelet
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: kubernetes
+    
+2a. Create the cluster-role-binding:
+
+kubectl create -f kube-apiserver-to-kubelet-bind.yaml
+
+--> clusterrolebinding.rbac.authorization.k8s.io/system:kube-apiserver created
+
+TBD: This curl is not working yet - see in the TBD earlier about the fix for this
+--> one method works, the other does not
+- WORKS
+# curl https://192.168.8.11:6443/version --key ./admin-key.pem --cert ./admin.pem --cacert ./ca.pem
+{
+  "major": "1",
+  "minor": "12",
+  "gitVersion": "v1.12.8",
+  "gitCommit": "a89f8c11a5f4f132503edbc4918c98518fd504e3",
+  "gitTreeState": "clean",
+  "buildDate": "2019-04-23T04:41:47Z",
+  "goVersion": "go1.10.8",
+  "compiler": "gc",
+  "platform": "linux/amd64"
+
+- DOES NOT WORK (TBD)
+[root@ks2 certs]# curl --cacert ./ca.pem https://192.168.60.102:6443/version
+{
+  "kind": "Status",
+  "apiVersion": "v1",
+  "metadata": {
+    
+  },
+  "status": "Failure",
+  "message": "Unauthorized",
+  "reason": "Unauthorized",
+  "code": 401
+}[root@ks2 certs]# curl -k https://192.168.60.102:6443/api/v1/nodes
+{
+  "kind": "Status",
+  "apiVersion": "v1",
+  "metadata": {
+    
+  },
+  "status": "Failure",
+  "message": "Unauthorized",
+  "reason": "Unauthorized",
+  "code": 401
+}
+
+=========================
+KUBE-PROXY
+=========================
+YML - https://github.com/kubernetes/kubernetes/blob/master/cluster/addons/kube-proxy
+      - These seem to be in helm like format with {{ }} - replace those with appropriate actuals
+      - two files - kube-proxy-rbac.yaml and kube-proxy-ds.yaml
+Options - https://kubernetes.io/docs/reference/command-line-tools-reference/kube-proxy/
+
+some reference - https://github.com/kelseyhightower/intro-to-kubernetes-workshop/blob/master/labs/install-and-configure-kube-proxy.md
+
+IMAGES - docker pull gcr.io/google-containers/kube-proxy-amd64:v1.12.8 (already done in k8s-base-VM)
+
+Combine two model files into one kube-proxy.yaml
+Copy the file into /etc/kubernetes/addons - kubelet will error out if placed in /etc/kubernetes/manifests (see further below)
+
+-------------------------
+CREATE kube-proxy.yaml
+-------------------------
+
+File kube-proxy.yaml :  (Place this in /etc/kubernetes/addons - not in /etc/kubernetes/manifests)
+Note: Change the kubeconfig file name as per your latest naming convention 
+      (the line - --kubeconfig=/etc/kubernetes/kube-proxy.kubeconfig)
+
+# FROM kube-proxy-rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-proxy
+  namespace: kube-system
+  labels:
+    addonmanager.kubernetes.io/mode: Reconcile
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: system:kube-proxy
+  labels:
+    addonmanager.kubernetes.io/mode: Reconcile
+subjects:
+  - kind: ServiceAccount
+    name: kube-proxy
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: system:node-proxier
+  apiGroup: rbac.authorization.k8s.io
+
+# FROM kube-proxy-ds.yaml
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    k8s-app: kube-proxy
+    addonmanager.kubernetes.io/mode: Reconcile
+  name: kube-proxy
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      k8s-app: kube-proxy
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 10%
+  template:
+    metadata:
+      labels:
+        k8s-app: kube-proxy
+    spec:
+      priorityClassName: system-node-critical
+      hostNetwork: true
+      #nodeSelector:
+        #node.kubernetes.io/kube-proxy-ds-ready: "true"
+      tolerations:
+      - operator: "Exists"
+        effect: "NoExecute"
+      - operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: kube-proxy
+        #image: docker pull gcr.io/google-containers/kube-proxy-amd64:v1.12.8
+        image: gcr.io/google_containers/kube-proxy-amd64:v1.12.8
+        resources:
+          requests:
+            cpu: 100m
+        command:
+        - /usr/local/bin/kube-proxy
+        - --kubeconfig=/etc/kubernetes/kube-proxy.kubeconfig
+        - --master=https://$(MASTER_IP):6443
+        - --cluster-cidr=10.20.0.0/16
+        - --masquerade-all
+        env:
+        - name: MASTER_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - mountPath: /var/log
+          name: varlog
+          readOnly: false
+        - mountPath: /run/xtables.lock
+          name: xtables-lock
+          readOnly: false
+        - mountPath: /lib/modules
+          name: lib-modules
+          readOnly: true
+        - mountPath: /etc/kubernetes
+          name: etc-kubernetes
+          readOnly: true
+      volumes:
+      - name: varlog
+        hostPath:
+          path: /var/log
+      - name: xtables-lock
+        hostPath:
+          path: /run/xtables.lock
+          type: FileOrCreate
+      - name: lib-modules
+        hostPath:
+          path: /lib/modules
+      - name: etc-kubernetes
+        hostPath:
+          path: /etc/kubernetes
+          type: Directory
+      serviceAccountName: kube-proxy
+
+- CREATE KUBE-PROXY POD
+(see further below)
+
+------------------------------------------
+CREATE KUBECONFIG FILE FOR KUBE-PROXY
+------------------------------------------
+
+Script: kubeconfig-kube-proxy-gen.sh
+
+ kubectl config set-cluster kubernetes \
+--certificate-authority=ca.pem \
+--embed-certs=true \
+--server=https://192.168.60.102:6443 \
+--kubeconfig=kube-proxy.kubeconfig
+
+kubectl config set-credentials kube-proxy \
+--client-certificate=kube-proxy.pem \
+--client-key=kube-proxy-key.pem \
+--embed-certs=true \
+--kubeconfig=kube-proxy.kubeconfig
+
+kubectl config set-context default \
+--cluster=kubernetes \
+--user=kube-proxy \
+--kubeconfig=kube-proxy.kubeconfig
+
+kubectl config use-context default --kubeconfig=kube-proxy.kubeconfig
+
+Get this file:
+kube-proxy.kubeconfig
+
+Copy the file to /etc/kubernetes:
+cp kube-proxy.kubeconfig /etc/kubernetes/kube-proxy.kubeconfig
+
+---------------------
+DEPLOY KUBE-PROXY
+---------------------
+mkdir /etc/kubernetes/addons
+cp kube-proxy.yaml /etc/kubernetes/addons/.
+kubectl create -f /etc/kubernetes/addons/kube-proxy.yaml
+or
+kubectl apply -f /etc/kubernetes/addons/kube-proxy.yml
+
+-------
+VERIFY
+-------
+NOTE: IP addresses for these are all these so far are VM's IP (aka host's IP)
+
+# kubectl get pods --all-namespaces -o wide
+NAMESPACE     NAME                          READY   STATUS    RESTARTS   AGE     IP               NODE   NOMINATED NODE
+kube-system   kube-apiserver-ks2            1/1     Running   0          44h     192.168.60.102   ks2    <none>
+kube-system   kube-controller-manager-ks2   1/1     Running   1          6d18h   192.168.60.102   ks2    <none>
+kube-system   kube-proxy-txnx8              1/1     Running   0          8m40s   192.168.60.102   ks2    <none>
+kube-system   kube-scheduler-ks2            1/1     Running   1          6d18h   192.168.60.102   ks2    <none>
+
+=========================
+COREDNS
+=========================
+https://kubernetes.io/docs/tasks/administer-cluster/coredns/
+--> https://kubernetes.io/docs/tasks/administer-cluster/coredns/#installing-coredns
+	--> https://github.com/coredns/deployment/tree/master/kubernetes
+
+These docs above seem to imply that in 1.12 and below versions, install kube-dns first and then change to coredns.
+
+So, install kube-dns first
+
+----------------------
+KUBE-DNS
+----------------------
+- GET THE YAML 
+https://github.com/kubernetes/kubernetes/blob/master/cluster/addons/dns/kube-dns/kube-dns.yaml.base
+--> get this and rename as kube-dns.yaml
+
+- MODIFY THE YAML
+In the downloaded file, change the following settings:
+
+__PILLAR__DNS__SERVER__ = 10.96.0.10 (derive this from the service ip range in kube-apiserver.yaml)
+__PILLAR__DNS__MEMORY__LIMIT__ = 150Mi (this is case-sensitive - write it as Mi)
+__PILLAR__DNS__DOMAIN__ = cluster.local. (which is usual standard)
+--> NOTE - cluster.local. (with a dot at the end) in "domain=" section
+-->.       without dot in the other sections
+
+Here is the difference between the base (downloaded) and the modified one:
+[root@ksn1 addons]# diff *base *dns*l
+33c33
+<   clusterIP: __PILLAR__DNS__SERVER__
+---
+>   clusterIP: 10.96.0.10
+110c110
+<             memory: __PILLAR__DNS__MEMORY__LIMIT__
+---
+>             memory: 150mi
+133c133
+<         - --domain=__PILLAR__DNS__DOMAIN__.
+---
+>         - --domain=cluster.local.
+175c175
+<         - --server=/__PILLAR__DNS__DOMAIN__/127.0.0.1#10053
+---
+>         - --server=/cluster.local/127.0.0.1#10053
+207,208c207,208
+<         - --probe=kubedns,127.0.0.1:10053,kubernetes.default.svc.__PILLAR__DNS__DOMAIN__,5,SRV
+<         - --probe=dnsmasq,127.0.0.1:53,kubernetes.default.svc.__PILLAR__DNS__DOMAIN__,5,SRV
+---
+>         - --probe=kubedns,127.0.0.1:10053,kubernetes.default.svc.cluster.local,5,SRV
+>         - --probe=dnsmasq,127.0.0.1:53,kubernetes.default.svc.cluster.local,5,SRV
+
+
+File:  /etc/kubernetes/addons/kube-dns.yaml.base (downloaded) (see the modified one down below)
+(NOTE - modify settings as specified above)
+
+# Copyright 2016 The Kubernetes Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Should keep target in cluster/addons/dns-horizontal-autoscaler/dns-horizontal-autoscaler.yaml
+# in sync with this file.
+
+# __MACHINE_GENERATED_WARNING__
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-dns
+  namespace: kube-system
+  labels:
+    k8s-app: kube-dns
+    kubernetes.io/cluster-service: "true"
+    addonmanager.kubernetes.io/mode: Reconcile
+    kubernetes.io/name: "KubeDNS"
+spec:
+  selector:
+    k8s-app: kube-dns
+  clusterIP: __PILLAR__DNS__SERVER__
+  ports:
+  - name: dns
+    port: 53
+    protocol: UDP
+  - name: dns-tcp
+    port: 53
+    protocol: TCP
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-dns
+  namespace: kube-system
+  labels:
+    kubernetes.io/cluster-service: "true"
+    addonmanager.kubernetes.io/mode: Reconcile
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kube-dns
+  namespace: kube-system
+  labels:
+    addonmanager.kubernetes.io/mode: EnsureExists
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-dns
+  namespace: kube-system
+  labels:
+    k8s-app: kube-dns
+    kubernetes.io/cluster-service: "true"
+    addonmanager.kubernetes.io/mode: Reconcile
+spec:
+  # replicas: not specified here:
+  # 1. In order to make Addon Manager do not reconcile this replicas parameter.
+  # 2. Default is 1.
+  # 3. Will be tuned in real time if DNS horizontal auto-scaling is turned on.
+  strategy:
+    rollingUpdate:
+      maxSurge: 10%
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      k8s-app: kube-dns
+  template:
+    metadata:
+      labels:
+        k8s-app: kube-dns
+      annotations:
+        seccomp.security.alpha.kubernetes.io/pod: 'docker/default'
+        prometheus.io/port: "10054"
+        prometheus.io/scrape: "true"
+    spec:
+      priorityClassName: system-cluster-critical
+      securityContext:
+        supplementalGroups: [ 65534 ]
+        fsGroup: 65534
+      tolerations:
+      - key: "CriticalAddonsOnly"
+        operator: "Exists"
+      volumes:
+      - name: kube-dns-config
+        configMap:
+          name: kube-dns
+          optional: true
+      containers:
+      - name: kubedns
+        image: k8s.gcr.io/k8s-dns-kube-dns:1.14.13
+        resources:
+          # TODO: Set memory limits when we've profiled the container for large
+          # clusters, then set request = limit to keep this container in
+          # guaranteed class. Currently, this container falls into the
+          # "burstable" category so the kubelet doesn't backoff from restarting it.
+          limits:
+            memory: __PILLAR__DNS__MEMORY__LIMIT__
+          requests:
+            cpu: 100m
+            memory: 70Mi
+        livenessProbe:
+          httpGet:
+            path: /healthcheck/kubedns
+            port: 10054
+            scheme: HTTP
+          initialDelaySeconds: 60
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /readiness
+            port: 8081
+            scheme: HTTP
+          # we poll on pod startup for the Kubernetes master service and
+          # only setup the /readiness HTTP server once that's available.
+          initialDelaySeconds: 3
+          timeoutSeconds: 5
+        args:
+        - --domain=__PILLAR__DNS__DOMAIN__.
+        - --dns-port=10053
+        - --config-dir=/kube-dns-config
+        - --v=2
+        env:
+        - name: PROMETHEUS_PORT
+          value: "10055"
+        ports:
+        - containerPort: 10053
+          name: dns-local
+          protocol: UDP
+        - containerPort: 10053
+          name: dns-tcp-local
+          protocol: TCP
+        - containerPort: 10055
+          name: metrics
+          protocol: TCP
+        volumeMounts:
+        - name: kube-dns-config
+          mountPath: /kube-dns-config
+      - name: dnsmasq
+        image: k8s.gcr.io/k8s-dns-dnsmasq-nanny:1.14.13
+        livenessProbe:
+          httpGet:
+            path: /healthcheck/dnsmasq
+            port: 10054
+            scheme: HTTP
+          initialDelaySeconds: 60
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 5
+        args:
+        - -v=2
+        - -logtostderr
+        - -configDir=/etc/k8s/dns/dnsmasq-nanny
+        - -restartDnsmasq=true
+        - --
+        - -k
+        - --cache-size=1000
+        - --no-negcache
+        - --dns-loop-detect
+        - --log-facility=-
+        - --server=/__PILLAR__DNS__DOMAIN__/127.0.0.1#10053
+        - --server=/in-addr.arpa/127.0.0.1#10053
+        - --server=/ip6.arpa/127.0.0.1#10053
+        ports:
+        - containerPort: 53
+          name: dns
+          protocol: UDP
+        - containerPort: 53
+          name: dns-tcp
+          protocol: TCP
+        # see: https://github.com/kubernetes/kubernetes/issues/29055 for details
+        resources:
+          requests:
+            cpu: 150m
+            memory: 20Mi
+        volumeMounts:
+        - name: kube-dns-config
+          mountPath: /etc/k8s/dns/dnsmasq-nanny
+      - name: sidecar
+        image: k8s.gcr.io/k8s-dns-sidecar:1.14.13
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: 10054
+            scheme: HTTP
+          initialDelaySeconds: 60
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 5
+        args:
+        - --v=2
+        - --logtostderr
+        - --probe=kubedns,127.0.0.1:10053,kubernetes.default.svc.__PILLAR__DNS__DOMAIN__,5,SRV
+        - --probe=dnsmasq,127.0.0.1:53,kubernetes.default.svc.__PILLAR__DNS__DOMAIN__,5,SRV
+        ports:
+        - containerPort: 10054
+          name: metrics
+          protocol: TCP
+        resources:
+          requests:
+            memory: 20Mi
+            cpu: 10m
+      dnsPolicy: Default  # Don't use cluster DNS.
+      serviceAccountName: kube-dns
+ 
+- - - - - - - - - - - - - - - - 
+ File kube-dns.yaml (modified):
+- - - - - - - - - - - - - - - - 
+# Copyright 2016 The Kubernetes Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Should keep target in cluster/addons/dns-horizontal-autoscaler/dns-horizontal-autoscaler.yaml
+# in sync with this file.
+
+# __MACHINE_GENERATED_WARNING__
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-dns
+  namespace: kube-system
+  labels:
+    k8s-app: kube-dns
+    kubernetes.io/cluster-service: "true"
+    addonmanager.kubernetes.io/mode: Reconcile
+    kubernetes.io/name: "KubeDNS"
+spec:
+  selector:
+    k8s-app: kube-dns
+  clusterIP: 10.96.0.10
+  ports:
+  - name: dns
+    port: 53
+    protocol: UDP
+  - name: dns-tcp
+    port: 53
+    protocol: TCP
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-dns
+  namespace: kube-system
+  labels:
+    kubernetes.io/cluster-service: "true"
+    addonmanager.kubernetes.io/mode: Reconcile
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kube-dns
+  namespace: kube-system
+  labels:
+    addonmanager.kubernetes.io/mode: EnsureExists
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-dns
+  namespace: kube-system
+  labels:
+    k8s-app: kube-dns
+    kubernetes.io/cluster-service: "true"
+    addonmanager.kubernetes.io/mode: Reconcile
+spec:
+  # replicas: not specified here:
+  # 1. In order to make Addon Manager do not reconcile this replicas parameter.
+  # 2. Default is 1.
+  # 3. Will be tuned in real time if DNS horizontal auto-scaling is turned on.
+  strategy:
+    rollingUpdate:
+      maxSurge: 10%
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      k8s-app: kube-dns
+  template:
+    metadata:
+      labels:
+        k8s-app: kube-dns
+      annotations:
+        seccomp.security.alpha.kubernetes.io/pod: 'docker/default'
+        prometheus.io/port: "10054"
+        prometheus.io/scrape: "true"
+    spec:
+      priorityClassName: system-cluster-critical
+      securityContext:
+        supplementalGroups: [ 65534 ]
+        fsGroup: 65534
+      tolerations:
+      - key: "CriticalAddonsOnly"
+        operator: "Exists"
+      volumes:
+      - name: kube-dns-config
+        configMap:
+          name: kube-dns
+          optional: true
+      containers:
+      - name: kubedns
+        image: k8s.gcr.io/k8s-dns-kube-dns:1.14.13
+        resources:
+          # TODO: Set memory limits when we've profiled the container for large
+          # clusters, then set request = limit to keep this container in
+          # guaranteed class. Currently, this container falls into the
+          # "burstable" category so the kubelet doesn't backoff from restarting it.
+          limits:
+            memory: 150Mi
+          requests:
+            cpu: 100m
+            memory: 70Mi
+        livenessProbe:
+          httpGet:
+            path: /healthcheck/kubedns
+            port: 10054
+            scheme: HTTP
+          initialDelaySeconds: 60
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /readiness
+            port: 8081
+            scheme: HTTP
+          # we poll on pod startup for the Kubernetes master service and
+          # only setup the /readiness HTTP server once that's available.
+          initialDelaySeconds: 3
+          timeoutSeconds: 5
+        args:
+        - --domain=cluster.local.
+        - --dns-port=10053
+        - --config-dir=/kube-dns-config
+        - --v=2
+        env:
+        - name: PROMETHEUS_PORT
+          value: "10055"
+        ports:
+        - containerPort: 10053
+          name: dns-local
+          protocol: UDP
+        - containerPort: 10053
+          name: dns-tcp-local
+          protocol: TCP
+        - containerPort: 10055
+          name: metrics
+          protocol: TCP
+        volumeMounts:
+        - name: kube-dns-config
+          mountPath: /kube-dns-config
+      - name: dnsmasq
+        image: k8s.gcr.io/k8s-dns-dnsmasq-nanny:1.14.13
+        livenessProbe:
+          httpGet:
+            path: /healthcheck/dnsmasq
+            port: 10054
+            scheme: HTTP
+          initialDelaySeconds: 60
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 5
+        args:
+        - -v=2
+        - -logtostderr
+        - -configDir=/etc/k8s/dns/dnsmasq-nanny
+        - -restartDnsmasq=true
+        - --
+        - -k
+        - --cache-size=1000
+        - --no-negcache
+        - --dns-loop-detect
+        - --log-facility=-
+        - --server=/cluster.local/127.0.0.1#10053
+        - --server=/in-addr.arpa/127.0.0.1#10053
+        - --server=/ip6.arpa/127.0.0.1#10053
+        ports:
+        - containerPort: 53
+          name: dns
+          protocol: UDP
+        - containerPort: 53
+          name: dns-tcp
+          protocol: TCP
+        # see: https://github.com/kubernetes/kubernetes/issues/29055 for details
+        resources:
+          requests:
+            cpu: 150m
+            memory: 20Mi
+        volumeMounts:
+        - name: kube-dns-config
+          mountPath: /etc/k8s/dns/dnsmasq-nanny
+      - name: sidecar
+        image: k8s.gcr.io/k8s-dns-sidecar:1.14.13
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: 10054
+            scheme: HTTP
+          initialDelaySeconds: 60
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 5
+        args:
+        - --v=2
+        - --logtostderr
+        - --probe=kubedns,127.0.0.1:10053,kubernetes.default.svc.cluster.local,5,SRV
+        - --probe=dnsmasq,127.0.0.1:53,kubernetes.default.svc.cluster.local,5,SRV
+        ports:
+        - containerPort: 10054
+          name: metrics
+          protocol: TCP
+        resources:
+          requests:
+            memory: 20Mi
+            cpu: 10m
+      dnsPolicy: Default  # Don't use cluster DNS.
+      serviceAccountName: kube-dns
+ 
+ - DEPLOY KUBE-DNS
+kubectl apply -f /etc/kubernetes/addons/kube-dns.yaml
+service/kube-dns created
+serviceaccount/kube-dns created
+configmap/kube-dns created
+deployment.apps/kube-dns created
+
+- VERIFY STUFF AS OF NOW 
+# kubectl get pods --all-namespaces -o wide
+NAMESPACE     NAME                           READY   STATUS    RESTARTS   AGE     IP             NODE   NOMINATED NODE
+kube-system   kube-apiserver-ksn1            1/1     Running   0          2m26s   192.168.8.11   ksn1   <none>
+kube-system   kube-controller-manager-ksn1   1/1     Running   3          10d     192.168.8.11   ksn1   <none>
+kube-system   kube-dns-cbc549dbd-29m87       2/3     Running   1          105s    172.17.0.2     ksn1   <none>
+kube-system   kube-proxy-c58ll               1/1     Running   2          8d      192.168.8.11   ksn1   <none>
+kube-system   kube-scheduler-ksn1            1/1     Running   3          10d     192.168.8.11   ksn1   <none>
+
+- ERROR DIAGNOSIS (before successful creation)
+NOTE: There SHOULD be a kube-dns pod - only a deployment and a service is being seen now
+
+# kubectl get deployment --all-namespaces
+NAMESPACE     NAME       DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
+kube-system   kube-dns   1         0         0            0           23h
+
+# kubectl get pods --all-namespaces -o wide
+NAMESPACE     NAME                           READY   STATUS    RESTARTS   AGE    IP             NODE   NOMINATED NODE
+kube-system   kube-apiserver-ksn1            1/1     Running   0          4d1h   192.168.8.11   ksn1   <none>
+kube-system   kube-controller-manager-ksn1   1/1     Running   0          4d1h   192.168.8.11   ksn1   <none>
+kube-system   kube-proxy-c58ll               1/1     Running   0          26h    192.168.8.11   ksn1   <none>
+kube-system   kube-scheduler-ksn1            1/1     Running   0          4d1h   192.168.8.11   ksn1   <none>
+
+# kubectl get svc --all-namespaces
+NAMESPACE     NAME         TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)         AGE
+default       kubernetes   ClusterIP   10.96.0.1    <none>        443/TCP         5d
+kube-system   kube-dns     ClusterIP   10.96.0.10   <none>        53/UDP,53/TCP   23h
+
+You may have to scale up the number pods: (at least it should have created one pod - but it did not)
+# kubectl --namespace=kube-system scale deployment kube-dns --replicas=1
+
+It has created also a replicaset
+
+# kubectl get rs --all-namespaces
+NAMESPACE     NAME                 DESIRED   CURRENT   READY   AGE
+kube-system   kube-dns-cbc549dbd   1         0         0       6d21h
+
+# kubectl scale rs kube-dns-cbc549dbd  -n kube-system --replicas=0
+# kubectl scale rs kube-dns-cbc549dbd  -n kube-system --replicas=1
+
+# kubectl describe rs kube-dns-cbc549dbd  -n kube-system
+Conditions:
+  Type             Status  Reason
+  ----             ------  ------
+  ReplicaFailure   True    FailedCreate
+Events:
+  Type     Reason        Age                     From                   Message
+  ----     ------        ----                    ----                   -------
+  Warning  FailedCreate  6d2h                    replicaset-controller  Error creating: pods "kube-dns-cbc549dbd-rvqcc" is forbidden: pod.Spec.SecurityContext.SupplementalGroups is forbidden
+...
+...
+  Warning  FailedCreate  4m6s (x25 over 20m)     replicaset-controller  (combined from similar events): Error creating: pods "kube-dns-cbc549dbd-mlkvd" is forbidden: pod.Spec.SecurityContext.SupplementalGroups is forbidden
+
+-- CAUSE
+https://github.com/kubernetes/kubernetes/issues/45324
+- Did your apiserver switch on SecurityContextDeny admission controller ?
+- https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#securitycontextdeny
+- https://kubernetes.io/docs/concepts/policy/pod-security-policy/ (READ THIS - ALSO FOR GENERAL INFO)
+
+-- FIX
+Removed the directive securitycontextdeny from kube-apiserver.yml and restarted kubelet
+
+======================
+FLANNEL
+======================
+- MANIFEST
+Apply directly from here: https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+(like kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml)
+Actual git repo file: https://github.com/coreos/flannel/blob/master/Documentation/kube-flannel.yml
+
+- BRIEF
+https://github.com/coreos/flannel/blob/master/Documentation/kubernetes.md
+	kube-flannel.yaml
+	The flannel manifest defines four things:
+
+	A ClusterRole and ClusterRoleBinding for role based acccess control (RBAC).
+	A service account for flannel to use.
+	A ConfigMap containing both a CNI configuration and a flannel configuration. The network in the flannel 
+	configuration should match the pod network CIDR. The choice of backend is also made here and defaults to VXLAN.
+	A DaemonSet for every architecture to deploy the flannel pod on each Node. The pod has two containers 
+	1) the flannel daemon itself, and 
+	2) an initContainer for deploying the CNI configuration to a location that the kubelet can read.
+	When you run pods, they will be allocated IP addresses from the pod network CIDR. 
+	No matter which node those pods end up on, they will be able to communicate with each other.
+
+- CREATE FLANNEL POD
+This, in a virtualbox vm with NAT enabled can give an error on certificates (see troubleshooting below)
+cd /etc/kubernetes/addons
+wget https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+kubectl apply -f kube-flannel.yml
+
+- ERROR AND TROUBLESHOOTING
+There are two errors below:
+1. It is using the nat interface which is the first interface in the list of interfaces in the VM
+2. It is not liking the certificate of mostly kube-apiserver
+3. Different error after fixing 2
+
+[root@ksn1 addons]# kubectl logs kube-flannel-ds-amd64-2hbhp -n kube-system
+I0924 11:11:47.616440       1 main.go:514] Determining IP address of default interface
+I0924 11:11:47.619268       1 main.go:527] Using interface with name enp0s3 and address 10.0.2.15
+I0924 11:11:47.619331       1 main.go:544] Defaulting external address to interface address (10.0.2.15)
+E0924 11:11:47.745209       1 main.go:241] Failed to create SubnetManager: error retrieving pod spec for 'kube-system/kube-flannel-ds-amd64-2hbhp': Get https://10.96.0.1:443/api/v1/namespaces/kube-system/pods/kube-flannel-ds-amd64-2hbhp: x509: certificate is valid for 192.168.8.11, 127.0.0.1, not 10.96.0.1
+
+Fixes:
+1. For NAT interface thing
+https://stackoverflow.com/questions/47845739/configuring-flannel-to-use-a-non-default-interface-in-kubernetes
+In kube-flannel.yml add the following line mentioning the interface to use (the one of the vm IP used in certs)
+      containers:
+      - name: kube-flannel
+        image: quay.io/coreos/flannel:v0.11.0-amd64
+        command:
+        - /opt/bin/flanneld
+        args:
+        - --ip-masq
+        - --kube-subnet-mgr
+        - --iface=enp0s8
+
+2. For the certificates 
+https://github.com/kelseyhightower/kubernetes-the-hard-way/issues/420
+
+- add 10.96.0.1 to kube-apiserver certificate (regenerate the certificate and copy to /etc/kubernetes/pki)
+--> then, stop kubelet, docker
+--> then, start docker, etcd, kubelet
+--> this restart is needed 
+
+3. After that, getting this:
+[root@ksn1 certs-ip-and-host-based]# kubectl logs kube-flannel-ds-amd64-pjk5v  -n kube-system
+I0924 13:23:32.523291       1 main.go:527] Using interface with name enp0s8 and address 192.168.8.11
+I0924 13:23:32.523633       1 main.go:540] Using 192.168.8.11 as external address
+I0924 13:23:32.731403       1 kube.go:126] Waiting 10m0s for node controller to sync
+I0924 13:23:32.731511       1 kube.go:309] Starting kube subnet manager
+I0924 13:23:33.732138       1 kube.go:133] Node controller sync successful
+I0924 13:23:33.732284       1 main.go:244] Created subnet manager: Kubernetes Subnet Manager - ksn1
+I0924 13:23:33.732299       1 main.go:247] Installing signal handlers
+I0924 13:23:33.733932       1 main.go:386] Found network config - Backend type: vxlan
+I0924 13:23:33.734464       1 vxlan.go:120] VXLAN config: VNI=1 Port=0 GBP=false DirectRouting=false
+E0924 13:23:33.735789       1 main.go:289] Error registering network: failed to acquire lease: node "ksn1" pod cidr not assigned
+I0924 13:23:33.735922       1 main.go:366] Stopping shutdownHandler...
+
+
+FIXES:
+- https://github.com/coreos/flannel/issues/728
+- https://coreos.com/flannel/docs/latest/kubernetes.html
+
+From: https://github.com/coreos/flannel/issues/728
+[root@ksn1 certs-ip-and-host-based]# kubectl get nodes -o jsonpath='{.items[*].spec.podCIDR}'
+[root@ksn1 certs-ip-and-host-based]# 
+
+To fix it:
+a. Add this to kube-controller-manager.yaml:
+- "- --allocate-node-cidrs"
+Then, restart kubelet
+
+b. Add this to /usr/lib/systemd/system/kubelet.d/10-kubeadm.conf
+# -- added (NOTE - ADD THIS AFTER YOU INSTALL FLANNEL, AND THEN RESTART KUBELET)
+Environment="KUBELET_NETWORK_ARGS=--network-plugin=cni --cni-conf-dir=/etc/cni/net.d --cni-bin-dir=/opt/cni/bin --node-ip=192.168.8.11"
+
+And in kubelet command in that file, reference that environment variable KUBELET_NETWORK_ARGS:
+ExecStart=/usr/bin/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_KUBEADM_ARGS $KUBELET_EXTRA_ARGS $KUBELET_NETWORK_ARGS  --client-ca-file=/etc/kubernetes/pki/ca.pem --tls-cert-file=/etc/kubernetes/pki/kubelet-192.168.8.11.pem --tls-private-key-file=/etc/kubernetes/pki/kubelet-192.168.8.11-key.pem --kubeconfig=/etc/kubernetes/kubeconfig.kubelet-192.168.8.11 --allow-privileged
+
+Then restart kubelet
+
+From: https://coreos.com/flannel/docs/latest/kubernetes.html
+Add the kubeadm based --pod-network-cidr=10.20.0.0/24 to flannel network config file
+--> otherwise, even with the other fix above, pods get docker IPs
+
+Verify:
+# kubectl get nodes -o jsonpath='{.items[*].spec.podCIDR}'
+10.20.0.0/24 --> THIS THE POD-CIDR RANGE IN CONTROLLER MANAGER (but, with 24 instead of 16 of the pod-cidr range) 
+
+Then, let us assume we created kube-dns - and get pods now:
+NOTE: Now you can see the kube-dns pod has CIDR IP
+# kubectl get pods --all-namespaces -o wide
+NAMESPACE     NAME                           READY   STATUS    RESTARTS   AGE     IP             NODE   NOMINATED NODE
+kube-system   kube-apiserver-ksn1            1/1     Running   2          104m    192.168.8.11   ksn1   <none>
+kube-system   kube-controller-manager-ksn1   1/1     Running   1          73m     192.168.8.11   ksn1   <none>
+kube-system   kube-dns-cbc549dbd-7n658       3/3     Running   0          4m50s   10.20.0.2      ksn1   <none>
+kube-system   kube-flannel-ds-amd64-pjk5v    1/1     Running   16         100m    192.168.8.11   ksn1   <none>
+kube-system   kube-proxy-c58ll               1/1     Running   4          8d      192.168.8.11   ksn1   <none>
+kube-system   kube-scheduler-ksn1            1/1     Running   5          11d     192.168.8.11   ksn1   <none>
+
+- FYI
+Check contents of the following folders
+    - pathPrefix: "/etc/cni/net.d"
+    - pathPrefix: "/run/flannel"
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+===========================
+APPENDIX
+===========================
+------------------------------------------------------------------------------------
+- ERROR - IF YOU PLACE kube-proxy.yaml in /etc/kubernetes/manifests
+	- because kube-proxy is a daemonset and not pod - manifests take only pods
+------------------------------------------------------------------------------------
+
+Aug 19 16:30:47 ks2 kubelet[18240]: E0819 16:30:47.254493   18240 file.go:108] Unable to process watch event: can't process config file "/etc/kubernetes/manifests/kube-proxy.yaml": /etc/kubernetes/manifests/kube-proxy.yaml: couldn't parse as pod(invalid pod: &core.ServiceAccount{TypeMeta:v1.TypeMeta{Kind:"", APIVersion:""}, ObjectMeta:v1.ObjectMeta{Name:"kube-proxy", GenerateName:"", Namespace:"kube-system", SelfLink:"", UID:"", ResourceVersion:"", Generation:0, CreationTimestamp:v1.Time{Time:time.Time{wall:0x0, ext:0, loc:(*time.Location)(nil)}}, DeletionTimestamp:(*v1.Time)(nil), DeletionGracePeriodSeconds:(*int64)(nil), Labels:map[string]string{"addonmanager.kubernetes.io/mode":"Reconcile"}, Annotations:map[string]string(nil), OwnerReferences:[]v1.OwnerReference(nil), Initializers:(*v1.Initializers)(nil), Finalizers:[]string(nil), ClusterName:""}, Secrets:[]core.ObjectReference(nil), ImagePullSecrets:[]core.LocalObjectReference(nil), AutomountServiceAccountToken:(*bool)(nil)}), please check config file.
+
+
+~~~~~~~~~~~~~~~~~~~~
+MODEL FILES
+~~~~~~~~~~~~~~~~~~~~
+-- File kube-proxy-rbac.yaml :
+(From https://github.com/kubernetes/kubernetes/blob/master/cluster/addons/kube-proxy/kube-proxy-rbac.yaml)
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-proxy
+  namespace: kube-system
+  labels:
+    addonmanager.kubernetes.io/mode: Reconcile
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: system:kube-proxy
+  labels:
+    addonmanager.kubernetes.io/mode: Reconcile
+subjects:
+  - kind: ServiceAccount
+    name: kube-proxy
+    namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: system:node-proxier
+  apiGroup: rbac.authorization.k8s.io
+  
+-- File kube-proxy-ds.yaml :
+(From - https://github.com/kubernetes/kubernetes/blob/master/cluster/addons/kube-proxy/kube-proxy-ds.yaml)
+
+# Please keep kube-proxy configuration in-sync with:
+# cluster/saltbase/salt/kube-proxy/kube-proxy.manifest
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    k8s-app: kube-proxy
+    addonmanager.kubernetes.io/mode: Reconcile
+  name: kube-proxy
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      k8s-app: kube-proxy
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 10%
+  template:
+    metadata:
+      labels:
+        k8s-app: kube-proxy
+    spec:
+      priorityClassName: system-node-critical
+      hostNetwork: true
+      nodeSelector:
+        node.kubernetes.io/kube-proxy-ds-ready: "true"
+      tolerations:
+      - operator: "Exists"
+        effect: "NoExecute"
+      - operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: kube-proxy
+        image: {{pillar['kube_docker_registry']}}/kube-proxy-amd64:{{pillar['kube-proxy_docker_tag']}}
+        resources:
+          requests:
+            cpu: {{ cpurequest }}
+        command:
+        - /bin/sh
+        - -c
+        - kube-proxy {{cluster_cidr}} --oom-score-adj=-998 {{params}} 1>>/var/log/kube-proxy.log 2>&1
+        env:
+        - name: KUBERNETES_SERVICE_HOST
+          value: {{kubernetes_service_host_env_value}}
+        {{kube_cache_mutation_detector_env_name}}
+          {{kube_cache_mutation_detector_env_value}}
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - mountPath: /var/log
+          name: varlog
+          readOnly: false
+        - mountPath: /run/xtables.lock
+          name: xtables-lock
+          readOnly: false
+        - mountPath: /lib/modules
+          name: lib-modules
+          readOnly: true
+      volumes:
+      - name: varlog
+        hostPath:
+          path: /var/log
+      - name: xtables-lock
+        hostPath:
+          path: /run/xtables.lock
+          type: FileOrCreate
+      - name: lib-modules
+        hostPath:
+          path: /lib/modules
+      serviceAccountName: kube-proxy
+
+~~~~~~~~~~~~~~~~~~~~~~~
+FLANNEL 
+~~~~~~~~~~~~~~~~~~~~~~~
+
+NOTE:  All stuff below as of now is just general notes - not yet tried out actual steps
+
+https://github.com/coreos/flannel
+--> https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+
+Without an overlay network, pods get only docker IPs
+To give them cluster-CIDR IPs, overlay network like Flannel, Calico should be installed
+
+--------------------------------------------
+NGINX POD WITHOUT FLANNEL
+--------------------------------------------
+
+File: nginx-dep.yaml
+
+apiVersion: apps/v1 # for versions before 1.9.0 use apps/v1beta2
+kind: Deployment
+metadata:
+  name: nginx-deployment
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+  replicas: 2 # tells deployment to run 2 pods matching the template
+  #replicas: 1 # tells deployment to run 2 pods matching the template
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+
+
+File: nginx-dep.sh
+
+kubectl apply -f nginx-dep.yaml
+
+- Verify
+
+[root@ks2 ~]# kubectl get pods 
+NAME                                READY   STATUS    RESTARTS   AGE
+nginx-deployment-57db5dc57d-2497h   1/1     Running   0          17m
+nginx-deployment-57db5dc57d-zvl57   1/1     Running   0          17m
+
+[root@ks2 ~]# kubectl get pods -o wide
+NAME                                READY   STATUS    RESTARTS   AGE   IP           NODE   NOMINATED NODE
+nginx-deployment-57db5dc57d-2497h   1/1     Running   0          17m   172.17.0.2   ks2    <none>
+nginx-deployment-57db5dc57d-zvl57   1/1     Running   0          17m   172.17.0.3   ks2    <none>
+
+
+------------------------------------------
+THESE FOLDERS WILL BE CREATED IN THE HOST
+------------------------------------------
+
+    - pathPrefix: "/etc/cni/net.d"
+    - pathPrefix: "/run/flannel"
+    - pathPrefix: "/etc/kube-flannel"  (MAYBE NOT)
+
+----------------------
+DOWNLOAD AND EDIT YAML
+----------------------
+https://github.com/coreos/flannel
+--> https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+
+
+~~~~~~~~~~~~~~~~~~~~~~~
+KUBE-DNS (or COREDNS)
+~~~~~~~~~~~~~~~~~~~~~~~
+https://github.com/kubernetes/kubernetes/blob/master/cluster/addons/dns/kube-dns/kube-dns.yaml.in
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ERROR LISTINGS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- ERROR 1 RESTARTING KUBELET WITH NO CLUSTER-ROLE AND CLUSTER-ROLE-BINDING
+
+[root@ks2 kubernetes]# systemctl start kubelet; journalctl -fu kubelet;
+-- Logs begin at Wed 2019-08-14 13:59:42 IST. --
+Aug 14 17:16:54 ks2 kubelet[18883]: E0814 17:16:54.037175   18883 kubelet.go:2236] node "ks2" not found
+Aug 14 17:16:54 ks2 kubelet[18883]: E0814 17:16:54.137841   18883 kubelet.go:2236] node "ks2" not found
+Aug 14 17:16:54 ks2 kubelet[18883]: E0814 17:16:54.238409   18883 kubelet.go:2236] node "ks2" not found
+Aug 14 17:16:54 ks2 kubelet[18883]: E0814 17:16:54.338646   18883 kubelet.go:2236] node "ks2" not found
+Aug 14 17:16:54 ks2 kubelet[18883]: E0814 17:16:54.439476   18883 kubelet.go:2236] node "ks2" not found
+Aug 14 17:16:54 ks2 kubelet[18883]: E0814 17:16:54.540019   18883 kubelet.go:2236] node "ks2" not found
+Aug 14 17:16:54 ks2 kubelet[18883]: E0814 17:16:54.640534   18883 kubelet.go:2236] node "ks2" not found
+Aug 14 17:16:54 ks2 systemd[1]: Stopping kubelet: The Kubernetes Node Agent...
+Aug 14 17:16:54 ks2 systemd[1]: Stopped kubelet: The Kubernetes Node Agent.
+Aug 14 17:18:50 ks2 systemd[1]: Started kubelet: The Kubernetes Node Agent.
+Aug 14 17:18:51 ks2 kubelet[20136]: Flag --pod-manifest-path has been deprecated, This parameter should be set via the config file specified by the Kubelet's --config flag. See https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/ for more information.
+Aug 14 17:18:51 ks2 kubelet[20136]: Flag --client-ca-file has been deprecated, This parameter should be set via the config file specified by the Kubelet's --config flag. See https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/ for more information.
+Aug 14 17:18:51 ks2 kubelet[20136]: Flag --tls-cert-file has been deprecated, This parameter should be set via the config file specified by the Kubelet's --config flag. See https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/ for more information.
+Aug 14 17:18:51 ks2 kubelet[20136]: Flag --tls-private-key-file has been deprecated, This parameter should be set via the config file specified by the Kubelet's --config flag. See https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/ for more information.
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.006236   20136 server.go:408] Version: v1.12.8
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.006373   20136 plugins.go:99] No cloud provider specified.
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.155240   20136 server.go:667] --cgroups-per-qos enabled, but --cgroup-root was not specified.  defaulting to /
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.155501   20136 container_manager_linux.go:247] container manager verified user specified cgroup-root exists: []
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.155513   20136 container_manager_linux.go:252] Creating Container Manager object based on Node Config: {RuntimeCgroupsName: SystemCgroupsName: KubeletCgroupsName: ContainerRuntime:docker CgroupsPerQOS:true CgroupRoot:/ CgroupDriver:cgroupfs KubeletRootDir:/var/lib/kubelet ProtectKernelDefaults:false NodeAllocatableConfig:{KubeReservedCgroupName: SystemReservedCgroupName: EnforceNodeAllocatable:map[pods:{}] KubeReserved:map[] SystemReserved:map[] HardEvictionThresholds:[{Signal:memory.available Operator:LessThan Value:{Quantity:100Mi Percentage:0} GracePeriod:0s MinReclaim:<nil>} {Signal:nodefs.available Operator:LessThan Value:{Quantity:<nil> Percentage:0.1} GracePeriod:0s MinReclaim:<nil>} {Signal:nodefs.inodesFree Operator:LessThan Value:{Quantity:<nil> Percentage:0.05} GracePeriod:0s MinReclaim:<nil>} {Signal:imagefs.available Operator:LessThan Value:{Quantity:<nil> Percentage:0.15} GracePeriod:0s MinReclaim:<nil>}]} QOSReserved:map[] ExperimentalCPUManagerPolicy:none ExperimentalCPUManagerReconcilePeriod:10s ExperimentalPodPidsLimit:-1 EnforceCPULimits:true CPUCFSQuotaPeriod:100ms}
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.155594   20136 container_manager_linux.go:271] Creating device plugin manager: true
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.155623   20136 state_mem.go:36] [cpumanager] initializing new in-memory state store
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.155738   20136 state_mem.go:84] [cpumanager] updated default cpuset: ""
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.155747   20136 state_mem.go:92] [cpumanager] updated cpuset assignments: "map[]"
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.155815   20136 kubelet.go:279] Adding pod path: /etc/kubernetes/manifests
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.155848   20136 kubelet.go:304] Watching apiserver
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.173306   20136 client.go:75] Connecting to docker on unix:///var/run/docker.sock
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.173326   20136 client.go:104] Start docker client with request timeout=2m0s
+Aug 14 17:18:51 ks2 kubelet[20136]: E0814 17:18:51.173552   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/kubelet.go:451: Failed to list *v1.Node: Get https://192.168.60.102:6443/api/v1/nodes?fieldSelector=metadata.name%3Dks2&limit=500&resourceVersion=0: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:51 ks2 kubelet[20136]: E0814 17:18:51.173610   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/kubelet.go:442: Failed to list *v1.Service: Get https://192.168.60.102:6443/api/v1/services?limit=500&resourceVersion=0: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:51 ks2 kubelet[20136]: E0814 17:18:51.173664   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/config/apiserver.go:47: Failed to list *v1.Pod: Get https://192.168.60.102:6443/api/v1/pods?fieldSelector=spec.nodeName%3Dks2&limit=500&resourceVersion=0: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:51 ks2 kubelet[20136]: W0814 17:18:51.236749   20136 docker_service.go:540] Hairpin mode set to "promiscuous-bridge" but kubenet is not enabled, falling back to "hairpin-veth"
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.236776   20136 docker_service.go:236] Hairpin mode set to "hairpin-veth"
+Aug 14 17:18:51 ks2 kubelet[20136]: W0814 17:18:51.236852   20136 cni.go:188] Unable to update cni config: No networks found in /etc/cni/net.d
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.240548   20136 docker_service.go:251] Docker cri networking managed by kubernetes.io/no-op
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.272279   20136 docker_service.go:256] Docker Info: &{ID:KS4G:JVF5:BFCF:ER3E:4DCO:W73D:RLCY:3WRI:PAIY:LL2G:6FJX:DDC5 Containers:1 ContainersRunning:1 ContainersPaused:0 ContainersStopped:0 Images:7 Driver:overlay2 DriverStatus:[[Backing Filesystem xfs] [Supports d_type true] [Native Overlay Diff true]] SystemStatus:[] Plugins:{Volume:[local] Network:[bridge host ipvlan macvlan null overlay] Authorization:[] Log:[awslogs fluentd gcplogs gelf journald json-file local logentries splunk syslog]} MemoryLimit:true SwapLimit:true KernelMemory:true CPUCfsPeriod:true CPUCfsQuota:true CPUShares:true CPUSet:true IPv4Forwarding:true BridgeNfIptables:true BridgeNfIP6tables:true Debug:false NFd:32 OomKillDisable:true NGoroutines:52 SystemTime:2019-08-14T17:18:51.241633966+05:30 LoggingDriver:json-file CgroupDriver:cgroupfs NEventsListener:0 KernelVersion:3.10.0-957.el7.x86_64 OperatingSystem:CentOS Linux 7 (Core) OSType:linux Architecture:x86_64 IndexServerAddress:https://index.docker.io/v1/ RegistryConfig:0xc420160690 NCPU:1 MemTotal:2096295936 GenericResources:[] DockerRootDir:/var/lib/docker HTTPProxy: HTTPSProxy: NoProxy: Name:ks2 Labels:[] ExperimentalBuild:false ServerVersion:19.03.1 ClusterStore: ClusterAdvertise: Runtimes:map[runc:{Path:runc Args:[]}] DefaultRuntime:runc Swarm:{NodeID: NodeAddr: LocalNodeState:inactive ControlAvailable:false Error: RemoteManagers:[] Nodes:0 Managers:0 Cluster:<nil>} LiveRestoreEnabled:false Isolation: InitBinary:docker-init ContainerdCommit:{ID:894b81a4b802e4eb2a91d1ce216b8817763c29fb Expected:894b81a4b802e4eb2a91d1ce216b8817763c29fb} RuncCommit:{ID:425e105d5a03fabd737a126ad93d62a9eeede87f Expected:425e105d5a03fabd737a126ad93d62a9eeede87f} InitCommit:{ID:fec3683 Expected:fec3683} SecurityOptions:[name=seccomp,profile=default]}
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.272344   20136 docker_service.go:269] Setting cgroupDriver to cgroupfs
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.344877   20136 kuberuntime_manager.go:197] Container runtime docker initialized, version: 19.03.1, apiVersion: 1.40.0
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.422807   20136 server.go:1013] Started kubelet
+Aug 14 17:18:51 ks2 kubelet[20136]: E0814 17:18:51.423243   20136 kubelet.go:1287] Image garbage collection failed once. Stats initialization may not have completed yet: failed to get imageFs info: unable to find data in memory cache
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.423625   20136 fs_resource_analyzer.go:66] Starting FS ResourceAnalyzer
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.423647   20136 status_manager.go:152] Starting to sync pod status with apiserver
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.423659   20136 kubelet.go:1804] Starting kubelet main sync loop.
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.423671   20136 kubelet.go:1821] skipping pod synchronization - [container runtime is down PLEG is not healthy: pleg was last seen active 2562047h47m16.854775807s ago; threshold is 3m0s]
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.423770   20136 server.go:133] Starting to listen on 0.0.0.0:10250
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.424270   20136 server.go:318] Adding debug handlers to kubelet server.
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.425609   20136 volume_manager.go:248] Starting Kubelet Volume Manager
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.430199   20136 desired_state_of_world_populator.go:130] Desired state populator starts to run
+Aug 14 17:18:51 ks2 kubelet[20136]: E0814 17:18:51.454203   20136 event.go:212] Unable to write event: 'Post https://192.168.60.102:6443/api/v1/namespaces/default/events: dial tcp 192.168.60.102:6443: connect: connection refused' (may retry after sleeping)
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.550070   20136 kubelet.go:1821] skipping pod synchronization - [container runtime is down PLEG is not healthy: pleg was last seen active 2562047h47m16.854775807s ago; threshold is 3m0s]
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.550107   20136 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 17:18:51 ks2 kubelet[20136]: E0814 17:18:51.550582   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:51 ks2 kubelet[20136]: E0814 17:18:51.650737   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.718944   20136 kubelet_node_status.go:70] Attempting to register node ks2
+Aug 14 17:18:51 ks2 kubelet[20136]: E0814 17:18:51.729067   20136 kubelet_node_status.go:92] Unable to register node "ks2" with API server: Post https://192.168.60.102:6443/api/v1/nodes: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.773563   20136 kubelet.go:1821] skipping pod synchronization - [container runtime is down]
+Aug 14 17:18:51 ks2 kubelet[20136]: E0814 17:18:51.773585   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:51 ks2 kubelet[20136]: E0814 17:18:51.877518   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.886830   20136 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 17:18:51 ks2 kubelet[20136]: I0814 17:18:51.936686   20136 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 17:18:51 ks2 kubelet[20136]: E0814 17:18:51.982354   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:52 ks2 kubelet[20136]: I0814 17:18:52.004510   20136 cpu_manager.go:155] [cpumanager] starting with none policy
+Aug 14 17:18:52 ks2 kubelet[20136]: I0814 17:18:52.004523   20136 cpu_manager.go:156] [cpumanager] reconciling every 10s
+Aug 14 17:18:52 ks2 kubelet[20136]: I0814 17:18:52.004529   20136 policy_none.go:42] [cpumanager] none policy: Start
+Aug 14 17:18:52 ks2 kubelet[20136]: E0814 17:18:52.005536   20136 eviction_manager.go:247] eviction manager: failed to get get summary stats: failed to get node info: node "ks2" not found
+Aug 14 17:18:52 ks2 kubelet[20136]: I0814 17:18:52.034332   20136 kubelet_node_status.go:70] Attempting to register node ks2
+Aug 14 17:18:52 ks2 kubelet[20136]: E0814 17:18:52.034659   20136 kubelet_node_status.go:92] Unable to register node "ks2" with API server: Post https://192.168.60.102:6443/api/v1/nodes: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:52 ks2 kubelet[20136]: E0814 17:18:52.082479   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:52 ks2 kubelet[20136]: W0814 17:18:52.174139   20136 pod_container_deletor.go:75] Container "38539fa89aa4c28e390a5e10470db11f0fb4aac8cb9a772ef9ca5da9648aa647" not found in pod's containers
+Aug 14 17:18:52 ks2 kubelet[20136]: W0814 17:18:52.174179   20136 pod_container_deletor.go:75] Container "612d794e45f109e0cec4f2497b6bacf46f3edaaf48f0b66a6858c72bed9cb376" not found in pod's containers
+Aug 14 17:18:52 ks2 kubelet[20136]: W0814 17:18:52.174191   20136 pod_container_deletor.go:75] Container "e178abbef63bf21f1948855aa026351605aafd5854f7cf1f14720601ef963340" not found in pod's containers
+Aug 14 17:18:52 ks2 kubelet[20136]: I0814 17:18:52.174355   20136 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 17:18:52 ks2 kubelet[20136]: E0814 17:18:52.175610   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/kubelet.go:451: Failed to list *v1.Node: Get https://192.168.60.102:6443/api/v1/nodes?fieldSelector=metadata.name%3Dks2&limit=500&resourceVersion=0: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:52 ks2 kubelet[20136]: E0814 17:18:52.187436   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:52 ks2 kubelet[20136]: E0814 17:18:52.194382   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/kubelet.go:442: Failed to list *v1.Service: Get https://192.168.60.102:6443/api/v1/services?limit=500&resourceVersion=0: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:52 ks2 kubelet[20136]: E0814 17:18:52.194455   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/config/apiserver.go:47: Failed to list *v1.Pod: Get https://192.168.60.102:6443/api/v1/pods?fieldSelector=spec.nodeName%3Dks2&limit=500&resourceVersion=0: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:52 ks2 kubelet[20136]: I0814 17:18:52.244028   20136 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 17:18:52 ks2 kubelet[20136]: I0814 17:18:52.244440   20136 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 17:18:52 ks2 kubelet[20136]: E0814 17:18:52.289592   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:52 ks2 kubelet[20136]: W0814 17:18:52.364159   20136 status_manager.go:485] Failed to get status for pod "kube-scheduler-ks2_kube-system(50c22c6953e39f9c091c1e41cf6efa3b)": Get https://192.168.60.102:6443/api/v1/namespaces/kube-system/pods/kube-scheduler-ks2: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:52 ks2 kubelet[20136]: I0814 17:18:52.382063   20136 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 17:18:52 ks2 kubelet[20136]: I0814 17:18:52.382647   20136 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 17:18:52 ks2 kubelet[20136]: I0814 17:18:52.393266   20136 reconciler.go:207] operationExecutor.VerifyControllerAttachedVolume started for volume "k8s-certs" (UniqueName: "kubernetes.io/host-path/24885ad2245b362846991d1569f43690-k8s-certs") pod "kube-apiserver-ks2" (UID: "24885ad2245b362846991d1569f43690")
+Aug 14 17:18:52 ks2 kubelet[20136]: E0814 17:18:52.393334   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:52 ks2 kubelet[20136]: I0814 17:18:52.441559   20136 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 17:18:52 ks2 kubelet[20136]: E0814 17:18:52.496896   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:52 ks2 kubelet[20136]: I0814 17:18:52.496957   20136 reconciler.go:207] operationExecutor.VerifyControllerAttachedVolume started for volume "k8s-certs" (UniqueName: "kubernetes.io/host-path/d95dcce69327a2d64d92144e1f40b5f1-k8s-certs") pod "kube-controller-manager-ks2" (UID: "d95dcce69327a2d64d92144e1f40b5f1")
+Aug 14 17:18:52 ks2 kubelet[20136]: E0814 17:18:52.601841   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:52 ks2 kubelet[20136]: I0814 17:18:52.610589   20136 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 17:18:52 ks2 kubelet[20136]: W0814 17:18:52.638011   20136 status_manager.go:485] Failed to get status for pod "kube-apiserver-ks2_kube-system(24885ad2245b362846991d1569f43690)": Get https://192.168.60.102:6443/api/v1/namespaces/kube-system/pods/kube-apiserver-ks2: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:52 ks2 kubelet[20136]: I0814 17:18:52.698055   20136 kubelet_node_status.go:70] Attempting to register node ks2
+Aug 14 17:18:52 ks2 kubelet[20136]: E0814 17:18:52.698363   20136 kubelet_node_status.go:92] Unable to register node "ks2" with API server: Post https://192.168.60.102:6443/api/v1/nodes: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:52 ks2 kubelet[20136]: E0814 17:18:52.704213   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:52 ks2 kubelet[20136]: E0814 17:18:52.809312   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:52 ks2 kubelet[20136]: W0814 17:18:52.812496   20136 status_manager.go:485] Failed to get status for pod "kube-controller-manager-ks2_kube-system(d95dcce69327a2d64d92144e1f40b5f1)": Get https://192.168.60.102:6443/api/v1/namespaces/kube-system/pods/kube-controller-manager-ks2: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:52 ks2 kubelet[20136]: E0814 17:18:52.909471   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:53 ks2 kubelet[20136]: E0814 17:18:53.011403   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:53 ks2 kubelet[20136]: E0814 17:18:53.115125   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:53 ks2 kubelet[20136]: E0814 17:18:53.177047   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/kubelet.go:451: Failed to list *v1.Node: Get https://192.168.60.102:6443/api/v1/nodes?fieldSelector=metadata.name%3Dks2&limit=500&resourceVersion=0: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:53 ks2 kubelet[20136]: E0814 17:18:53.211321   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/kubelet.go:442: Failed to list *v1.Service: Get https://192.168.60.102:6443/api/v1/services?limit=500&resourceVersion=0: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:53 ks2 kubelet[20136]: E0814 17:18:53.211369   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/config/apiserver.go:47: Failed to list *v1.Pod: Get https://192.168.60.102:6443/api/v1/pods?fieldSelector=spec.nodeName%3Dks2&limit=500&resourceVersion=0: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:53 ks2 kubelet[20136]: E0814 17:18:53.216817   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:53 ks2 kubelet[20136]: I0814 17:18:53.224781   20136 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 17:18:53 ks2 kubelet[20136]: E0814 17:18:53.321285   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:53 ks2 kubelet[20136]: E0814 17:18:53.422228   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:53 ks2 kubelet[20136]: I0814 17:18:53.502044   20136 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 17:18:53 ks2 kubelet[20136]: E0814 17:18:53.522715   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:53 ks2 kubelet[20136]: E0814 17:18:53.627986   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:53 ks2 kubelet[20136]: E0814 17:18:53.728544   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:53 ks2 kubelet[20136]: W0814 17:18:53.800080   20136 pod_container_deletor.go:75] Container "a1f1d26c2d58d5a01e47d0c0c49f2f7f579417aa46e875f99da6165559b699c2" not found in pod's containers
+Aug 14 17:18:53 ks2 kubelet[20136]: E0814 17:18:53.829482   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:53 ks2 kubelet[20136]: E0814 17:18:53.934500   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:53 ks2 kubelet[20136]: I0814 17:18:53.946245   20136 kubelet_node_status.go:70] Attempting to register node ks2
+Aug 14 17:18:53 ks2 kubelet[20136]: E0814 17:18:53.946529   20136 kubelet_node_status.go:92] Unable to register node "ks2" with API server: Post https://192.168.60.102:6443/api/v1/nodes: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:54 ks2 kubelet[20136]: E0814 17:18:54.035772   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:54 ks2 kubelet[20136]: E0814 17:18:54.166892   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:54 ks2 kubelet[20136]: E0814 17:18:54.205199   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/kubelet.go:451: Failed to list *v1.Node: Get https://192.168.60.102:6443/api/v1/nodes?fieldSelector=metadata.name%3Dks2&limit=500&resourceVersion=0: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:54 ks2 kubelet[20136]: E0814 17:18:54.229607   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/config/apiserver.go:47: Failed to list *v1.Pod: Get https://192.168.60.102:6443/api/v1/pods?fieldSelector=spec.nodeName%3Dks2&limit=500&resourceVersion=0: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:54 ks2 kubelet[20136]: E0814 17:18:54.229672   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/kubelet.go:442: Failed to list *v1.Service: Get https://192.168.60.102:6443/api/v1/services?limit=500&resourceVersion=0: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:54 ks2 kubelet[20136]: E0814 17:18:54.268393   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:54 ks2 kubelet[20136]: E0814 17:18:54.368816   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:54 ks2 kubelet[20136]: E0814 17:18:54.471692   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:54 ks2 kubelet[20136]: E0814 17:18:54.573692   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:54 ks2 kubelet[20136]: E0814 17:18:54.674227   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:54 ks2 kubelet[20136]: E0814 17:18:54.777546   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:54 ks2 kubelet[20136]: E0814 17:18:54.880409   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:54 ks2 kubelet[20136]: E0814 17:18:54.981994   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:55 ks2 kubelet[20136]: E0814 17:18:55.083287   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:55 ks2 kubelet[20136]: E0814 17:18:55.184369   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:55 ks2 kubelet[20136]: E0814 17:18:55.207200   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/kubelet.go:451: Failed to list *v1.Node: Get https://192.168.60.102:6443/api/v1/nodes?fieldSelector=metadata.name%3Dks2&limit=500&resourceVersion=0: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:55 ks2 kubelet[20136]: E0814 17:18:55.236475   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/config/apiserver.go:47: Failed to list *v1.Pod: Get https://192.168.60.102:6443/api/v1/pods?fieldSelector=spec.nodeName%3Dks2&limit=500&resourceVersion=0: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:55 ks2 kubelet[20136]: E0814 17:18:55.261837   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/kubelet.go:442: Failed to list *v1.Service: Get https://192.168.60.102:6443/api/v1/services?limit=500&resourceVersion=0: dial tcp 192.168.60.102:6443: connect: connection refused
+Aug 14 17:18:55 ks2 kubelet[20136]: E0814 17:18:55.286524   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:55 ks2 kubelet[20136]: E0814 17:18:55.397716   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:55 ks2 kubelet[20136]: E0814 17:18:55.503365   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:55 ks2 kubelet[20136]: W0814 17:18:55.544364   20136 docker_container.go:202] Deleted previously existing symlink file: "/var/log/pods/24885ad2245b362846991d1569f43690/kube-apiserver/0.log"
+Aug 14 17:18:55 ks2 kubelet[20136]: I0814 17:18:55.550247   20136 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 17:18:55 ks2 kubelet[20136]: E0814 17:18:55.609021   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:55 ks2 kubelet[20136]: E0814 17:18:55.716308   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:55 ks2 kubelet[20136]: E0814 17:18:55.849921   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:55 ks2 kubelet[20136]: I0814 17:18:55.907994   20136 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 17:18:55 ks2 kubelet[20136]: E0814 17:18:55.962957   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:56 ks2 kubelet[20136]: E0814 17:18:56.064785   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:56 ks2 kubelet[20136]: I0814 17:18:56.081431   20136 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 17:18:56 ks2 kubelet[20136]: E0814 17:18:56.166127   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:56 ks2 kubelet[20136]: I0814 17:18:56.184208   20136 kubelet_node_status.go:70] Attempting to register node ks2
+Aug 14 17:18:56 ks2 kubelet[20136]: E0814 17:18:56.267208   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:56 ks2 kubelet[20136]: E0814 17:18:56.377438   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:56 ks2 kubelet[20136]: E0814 17:18:56.483025   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:56 ks2 kubelet[20136]: E0814 17:18:56.583508   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:56 ks2 kubelet[20136]: E0814 17:18:56.688122   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:56 ks2 kubelet[20136]: E0814 17:18:56.789238   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:56 ks2 kubelet[20136]: E0814 17:18:56.890208   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:56 ks2 kubelet[20136]: E0814 17:18:56.991842   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:57 ks2 kubelet[20136]: I0814 17:18:57.090136   20136 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 17:18:57 ks2 kubelet[20136]: E0814 17:18:57.101393   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:57 ks2 kubelet[20136]: I0814 17:18:57.138975   20136 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 17:18:57 ks2 kubelet[20136]: E0814 17:18:57.207967   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:57 ks2 kubelet[20136]: I0814 17:18:57.213866   20136 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 17:18:57 ks2 kubelet[20136]: E0814 17:18:57.315756   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:57 ks2 kubelet[20136]: E0814 17:18:57.426012   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:57 ks2 kubelet[20136]: E0814 17:18:57.526789   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:57 ks2 kubelet[20136]: E0814 17:18:57.628251   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:57 ks2 kubelet[20136]: E0814 17:18:57.737491   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:57 ks2 kubelet[20136]: E0814 17:18:57.838104   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:57 ks2 kubelet[20136]: E0814 17:18:57.938955   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:58 ks2 kubelet[20136]: E0814 17:18:58.045099   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:58 ks2 kubelet[20136]: E0814 17:18:58.147466   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:58 ks2 kubelet[20136]: I0814 17:18:58.229316   20136 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 17:18:58 ks2 kubelet[20136]: I0814 17:18:58.229642   20136 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 17:18:58 ks2 kubelet[20136]: E0814 17:18:58.251078   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:58 ks2 kubelet[20136]: E0814 17:18:58.358409   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:58 ks2 kubelet[20136]: E0814 17:18:58.466267   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:58 ks2 kubelet[20136]: E0814 17:18:58.570996   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:58 ks2 kubelet[20136]: E0814 17:18:58.672202   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:58 ks2 kubelet[20136]: E0814 17:18:58.775599   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:58 ks2 kubelet[20136]: E0814 17:18:58.883281   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:58 ks2 kubelet[20136]: E0814 17:18:58.990412   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:59 ks2 kubelet[20136]: E0814 17:18:59.094879   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:59 ks2 kubelet[20136]: E0814 17:18:59.198024   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:59 ks2 kubelet[20136]: E0814 17:18:59.299583   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:59 ks2 kubelet[20136]: E0814 17:18:59.400370   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:59 ks2 kubelet[20136]: E0814 17:18:59.507960   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:59 ks2 kubelet[20136]: E0814 17:18:59.610862   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:59 ks2 kubelet[20136]: E0814 17:18:59.724140   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:59 ks2 kubelet[20136]: E0814 17:18:59.834680   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:18:59 ks2 kubelet[20136]: E0814 17:18:59.947921   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:00 ks2 kubelet[20136]: E0814 17:19:00.048236   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:00 ks2 kubelet[20136]: E0814 17:19:00.152609   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:00 ks2 kubelet[20136]: E0814 17:19:00.254956   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:00 ks2 kubelet[20136]: E0814 17:19:00.363403   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:00 ks2 kubelet[20136]: E0814 17:19:00.470503   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:00 ks2 kubelet[20136]: E0814 17:19:00.581278   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:00 ks2 kubelet[20136]: E0814 17:19:00.684676   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:00 ks2 kubelet[20136]: E0814 17:19:00.787920   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:00 ks2 kubelet[20136]: E0814 17:19:00.896363   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:00 ks2 kubelet[20136]: E0814 17:19:00.999418   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:01 ks2 kubelet[20136]: E0814 17:19:01.105124   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:01 ks2 kubelet[20136]: E0814 17:19:01.208157   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:01 ks2 kubelet[20136]: E0814 17:19:01.318257   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:01 ks2 kubelet[20136]: E0814 17:19:01.431748   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:01 ks2 kubelet[20136]: E0814 17:19:01.535784   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:01 ks2 kubelet[20136]: E0814 17:19:01.645462   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:01 ks2 kubelet[20136]: E0814 17:19:01.752587   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:01 ks2 kubelet[20136]: E0814 17:19:01.857130   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:01 ks2 kubelet[20136]: E0814 17:19:01.960906   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:02 ks2 kubelet[20136]: E0814 17:19:02.008274   20136 eviction_manager.go:247] eviction manager: failed to get get summary stats: failed to get node info: node "ks2" not found
+Aug 14 17:19:02 ks2 kubelet[20136]: E0814 17:19:02.080414   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:02 ks2 kubelet[20136]: E0814 17:19:02.182500   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:02 ks2 kubelet[20136]: E0814 17:19:02.298075   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:02 ks2 kubelet[20136]: E0814 17:19:02.398345   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:02 ks2 kubelet[20136]: E0814 17:19:02.500638   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:02 ks2 kubelet[20136]: E0814 17:19:02.607985   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:02 ks2 kubelet[20136]: E0814 17:19:02.716452   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:02 ks2 kubelet[20136]: E0814 17:19:02.820984   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:02 ks2 kubelet[20136]: E0814 17:19:02.924199   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:03 ks2 kubelet[20136]: E0814 17:19:03.028338   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:03 ks2 kubelet[20136]: E0814 17:19:03.132233   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:03 ks2 kubelet[20136]: E0814 17:19:03.247782   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:03 ks2 kubelet[20136]: E0814 17:19:03.348269   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:03 ks2 kubelet[20136]: E0814 17:19:03.458560   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:03 ks2 kubelet[20136]: E0814 17:19:03.561009   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:03 ks2 kubelet[20136]: E0814 17:19:03.666353   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:03 ks2 kubelet[20136]: E0814 17:19:03.767989   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:03 ks2 kubelet[20136]: E0814 17:19:03.872987   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:03 ks2 kubelet[20136]: E0814 17:19:03.978305   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:04 ks2 kubelet[20136]: E0814 17:19:04.087819   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:04 ks2 kubelet[20136]: E0814 17:19:04.188116   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:04 ks2 kubelet[20136]: E0814 17:19:04.294574   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:04 ks2 kubelet[20136]: E0814 17:19:04.396271   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:04 ks2 kubelet[20136]: E0814 17:19:04.503851   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:04 ks2 kubelet[20136]: E0814 17:19:04.606657   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:04 ks2 kubelet[20136]: E0814 17:19:04.715296   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:04 ks2 kubelet[20136]: E0814 17:19:04.824557   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:04 ks2 kubelet[20136]: E0814 17:19:04.929320   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:05 ks2 kubelet[20136]: E0814 17:19:05.038514   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:05 ks2 kubelet[20136]: E0814 17:19:05.148111   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:05 ks2 kubelet[20136]: E0814 17:19:05.249985   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:05 ks2 kubelet[20136]: E0814 17:19:05.362554   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:05 ks2 kubelet[20136]: E0814 17:19:05.463420   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:05 ks2 kubelet[20136]: E0814 17:19:05.578039   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:05 ks2 kubelet[20136]: E0814 17:19:05.683516   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:05 ks2 kubelet[20136]: E0814 17:19:05.789238   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:05 ks2 kubelet[20136]: E0814 17:19:05.890519   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:05 ks2 kubelet[20136]: E0814 17:19:05.996369   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:06 ks2 kubelet[20136]: E0814 17:19:06.101787   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:06 ks2 kubelet[20136]: E0814 17:19:06.192003   20136 kubelet_node_status.go:92] Unable to register node "ks2" with API server: Post https://192.168.60.102:6443/api/v1/nodes: net/http: TLS handshake timeout
+Aug 14 17:19:06 ks2 kubelet[20136]: E0814 17:19:06.207448   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:06 ks2 kubelet[20136]: E0814 17:19:06.228500   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/kubelet.go:451: Failed to list *v1.Node: Get https://192.168.60.102:6443/api/v1/nodes?fieldSelector=metadata.name%3Dks2&limit=500&resourceVersion=0: net/http: TLS handshake timeout
+Aug 14 17:19:06 ks2 kubelet[20136]: E0814 17:19:06.247899   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/config/apiserver.go:47: Failed to list *v1.Pod: Get https://192.168.60.102:6443/api/v1/pods?fieldSelector=spec.nodeName%3Dks2&limit=500&resourceVersion=0: net/http: TLS handshake timeout
+Aug 14 17:19:06 ks2 kubelet[20136]: E0814 17:19:06.265869   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/kubelet.go:442: Failed to list *v1.Service: Get https://192.168.60.102:6443/api/v1/services?limit=500&resourceVersion=0: net/http: TLS handshake timeout
+Aug 14 17:19:06 ks2 kubelet[20136]: W0814 17:19:06.307661   20136 status_manager.go:485] Failed to get status for pod "kube-scheduler-ks2_kube-system(50c22c6953e39f9c091c1e41cf6efa3b)": Get https://192.168.60.102:6443/api/v1/namespaces/kube-system/pods/kube-scheduler-ks2: net/http: TLS handshake timeout
+Aug 14 17:19:06 ks2 kubelet[20136]: E0814 17:19:06.307693   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:06 ks2 kubelet[20136]: E0814 17:19:06.413800   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:06 ks2 kubelet[20136]: E0814 17:19:06.516799   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:06 ks2 kubelet[20136]: E0814 17:19:06.625042   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:06 ks2 kubelet[20136]: E0814 17:19:06.730589   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:06 ks2 kubelet[20136]: E0814 17:19:06.837732   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:06 ks2 kubelet[20136]: E0814 17:19:06.946300   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:07 ks2 kubelet[20136]: E0814 17:19:07.058524   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:07 ks2 kubelet[20136]: E0814 17:19:07.166075   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:07 ks2 kubelet[20136]: E0814 17:19:07.274335   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:07 ks2 kubelet[20136]: E0814 17:19:07.378462   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:07 ks2 kubelet[20136]: E0814 17:19:07.395430   20136 event.go:212] Unable to write event: 'Post https://192.168.60.102:6443/api/v1/namespaces/default/events: net/http: TLS handshake timeout' (may retry after sleeping)
+Aug 14 17:19:07 ks2 kubelet[20136]: E0814 17:19:07.484210   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:07 ks2 kubelet[20136]: E0814 17:19:07.584569   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:07 ks2 kubelet[20136]: E0814 17:19:07.687984   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:07 ks2 kubelet[20136]: E0814 17:19:07.798092   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:07 ks2 kubelet[20136]: E0814 17:19:07.908301   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:08 ks2 kubelet[20136]: E0814 17:19:08.014547   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:08 ks2 kubelet[20136]: E0814 17:19:08.118562   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:08 ks2 kubelet[20136]: E0814 17:19:08.224152   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:08 ks2 kubelet[20136]: E0814 17:19:08.325719   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:08 ks2 kubelet[20136]: E0814 17:19:08.427721   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:08 ks2 kubelet[20136]: E0814 17:19:08.535307   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:08 ks2 kubelet[20136]: E0814 17:19:08.565992   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/kubelet.go:442: Failed to list *v1.Service: Unauthorized
+Aug 14 17:19:08 ks2 kubelet[20136]: E0814 17:19:08.566049   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/config/apiserver.go:47: Failed to list *v1.Pod: Unauthorized
+Aug 14 17:19:08 ks2 kubelet[20136]: E0814 17:19:08.566086   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/kubelet.go:451: Failed to list *v1.Node: Unauthorized
+Aug 14 17:19:08 ks2 kubelet[20136]: W0814 17:19:08.566115   20136 status_manager.go:485] Failed to get status for pod "kube-apiserver-ks2_kube-system(24885ad2245b362846991d1569f43690)": Unauthorized
+Aug 14 17:19:08 ks2 kubelet[20136]: W0814 17:19:08.595312   20136 status_manager.go:485] Failed to get status for pod "kube-controller-manager-ks2_kube-system(d95dcce69327a2d64d92144e1f40b5f1)": Unauthorized
+Aug 14 17:19:08 ks2 kubelet[20136]: E0814 17:19:08.636991   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:08 ks2 kubelet[20136]: E0814 17:19:08.738934   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:08 ks2 kubelet[20136]: E0814 17:19:08.840243   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:08 ks2 kubelet[20136]: E0814 17:19:08.952010   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:09 ks2 kubelet[20136]: E0814 17:19:09.057120   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:09 ks2 kubelet[20136]: E0814 17:19:09.157744   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:09 ks2 kubelet[20136]: E0814 17:19:09.265995   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:09 ks2 kubelet[20136]: E0814 17:19:09.366514   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:09 ks2 kubelet[20136]: I0814 17:19:09.395431   20136 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 14 17:19:09 ks2 kubelet[20136]: E0814 17:19:09.467277   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:09 ks2 kubelet[20136]: I0814 17:19:09.489346   20136 kubelet_node_status.go:70] Attempting to register node ks2
+Aug 14 17:19:09 ks2 kubelet[20136]: E0814 17:19:09.490703   20136 kubelet_node_status.go:92] Unable to register node "ks2" with API server: Unauthorized
+Aug 14 17:19:09 ks2 kubelet[20136]: E0814 17:19:09.567763   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:09 ks2 kubelet[20136]: E0814 17:19:09.568045   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/kubelet.go:442: Failed to list *v1.Service: Unauthorized
+Aug 14 17:19:09 ks2 kubelet[20136]: E0814 17:19:09.570035   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/config/apiserver.go:47: Failed to list *v1.Pod: Unauthorized
+Aug 14 17:19:09 ks2 kubelet[20136]: E0814 17:19:09.571493   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/kubelet.go:451: Failed to list *v1.Node: Unauthorized
+Aug 14 17:19:09 ks2 kubelet[20136]: E0814 17:19:09.668126   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:09 ks2 kubelet[20136]: E0814 17:19:09.768323   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:09 ks2 kubelet[20136]: E0814 17:19:09.868674   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:09 ks2 kubelet[20136]: E0814 17:19:09.968967   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:10 ks2 kubelet[20136]: E0814 17:19:10.069437   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:10 ks2 kubelet[20136]: E0814 17:19:10.169782   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:10 ks2 kubelet[20136]: E0814 17:19:10.270058   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:10 ks2 kubelet[20136]: E0814 17:19:10.370733   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:10 ks2 kubelet[20136]: E0814 17:19:10.471075   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:10 ks2 kubelet[20136]: E0814 17:19:10.569864   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/kubelet.go:442: Failed to list *v1.Service: Unauthorized
+Aug 14 17:19:10 ks2 kubelet[20136]: E0814 17:19:10.571702   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/config/apiserver.go:47: Failed to list *v1.Pod: Unauthorized
+Aug 14 17:19:10 ks2 kubelet[20136]: E0814 17:19:10.572514   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:10 ks2 kubelet[20136]: E0814 17:19:10.573379   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/kubelet.go:451: Failed to list *v1.Node: Unauthorized
+Aug 14 17:19:10 ks2 kubelet[20136]: E0814 17:19:10.672815   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:10 ks2 kubelet[20136]: E0814 17:19:10.773592   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:10 ks2 kubelet[20136]: E0814 17:19:10.874212   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:10 ks2 kubelet[20136]: E0814 17:19:10.974667   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:11 ks2 kubelet[20136]: E0814 17:19:11.075209   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:11 ks2 kubelet[20136]: E0814 17:19:11.175815   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:11 ks2 kubelet[20136]: E0814 17:19:11.276026   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:11 ks2 kubelet[20136]: E0814 17:19:11.376803   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:11 ks2 kubelet[20136]: E0814 17:19:11.477162   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:11 ks2 kubelet[20136]: E0814 17:19:11.571509   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/kubelet.go:442: Failed to list *v1.Service: Unauthorized
+Aug 14 17:19:11 ks2 kubelet[20136]: E0814 17:19:11.572656   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/config/apiserver.go:47: Failed to list *v1.Pod: Unauthorized
+Aug 14 17:19:11 ks2 kubelet[20136]: E0814 17:19:11.573900   20136 reflector.go:125] k8s.io/kubernetes/pkg/kubelet/kubelet.go:451: Failed to list *v1.Node: Unauthorized
+Aug 14 17:19:11 ks2 kubelet[20136]: E0814 17:19:11.577343   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:11 ks2 kubelet[20136]: E0814 17:19:11.677902   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:11 ks2 kubelet[20136]: E0814 17:19:11.778329   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:11 ks2 kubelet[20136]: E0814 17:19:11.878955   20136 kubelet.go:2236] node "ks2" not found
+Aug 14 17:19:11 ks2 kubelet[20136]: E0814 17:19:11.980078   20136 kubelet.go:2236] node "ks2" not found
+^C
+[root@ks2 kubernetes]# 
+[root@ks2 kubernetes]# 
+[root@ks2 kubernetes]# docker ps -a
+CONTAINER ID        IMAGE                         COMMAND                  CREATED             STATUS              PORTS               NAMES
+da99b06966a1        dab16944dfce                  "kube-apiserver --ad…"   25 seconds ago      Up 23 seconds                           k8s_kube-apiserver_kube-apiserver-ks2_kube-system_24885ad2245b362846991d1569f43690_0
+f22d1f321e71        6ccd44dc061f                  "kube-controller-man…"   25 seconds ago      Up 23 seconds                           k8s_kube-controller-manager_kube-controller-manager-ks2_kube-system_d95dcce69327a2d64d92144e1f40b5f1_0
+37bb82483ede        c09febff85d6                  "kube-scheduler --ma…"   26 seconds ago      Up 24 seconds                           k8s_kube-scheduler_kube-scheduler-ks2_kube-system_50c22c6953e39f9c091c1e41cf6efa3b_0
+7efbf11a0c48        k8s.gcr.io/pause:3.1          "/pause"                 27 seconds ago      Up 25 seconds                           k8s_POD_kube-controller-manager-ks2_kube-system_d95dcce69327a2d64d92144e1f40b5f1_0
+0e39f88b6369        k8s.gcr.io/pause:3.1          "/pause"                 27 seconds ago      Up 25 seconds                           k8s_POD_kube-apiserver-ks2_kube-system_24885ad2245b362846991d1569f43690_0
+a1f1d26c2d58        k8s.gcr.io/pause:3.1          "/pause"                 27 seconds ago      Up 26 seconds                           k8s_POD_kube-scheduler-ks2_kube-system_50c22c6953e39f9c091c1e41cf6efa3b_0
+df76936fe6fd        quay.io/coreos/etcd:v3.2.24   "/usr/local/bin/etcd…"   3 hours ago         Up 3 hours                              etcd
+
+[root@ks2 kubernetes]# kubectl get nodes
+NAME   STATUS     ROLES    AGE     VERSION
+ks2    NotReady   <none>   3h30m   v1.12.8
+
+[root@ks2 kubernetes]# 
+# kubectl get pods --all-namespaces
+NAMESPACE     NAME                          READY   STATUS    RESTARTS   AGE
+kube-system   kube-apiserver-ks2            1/1     Running   0          3h18m
+kube-system   kube-controller-manager-ks2   1/1     Running   3          3h30m
+kube-system   kube-scheduler-ks2            1/1     Running   3          3h30m
+
+
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+TROUBLESHOOTING
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+== TROUBLESHOOTING
+All containers started, except kube-apiserver - which exited with the following error:
+
+# docker logs d5fa03e15ed9
+F0730 11:08:59.338023       1 storage_decorator.go:57] Unable to create storage backend: config (&{ /registry [https://192.168.60.101:2379]    true true 1000 0xc42013a360 <nil> 5m0s 1m0s}), err (context deadline exceeded)
+
+https://github.com/kubernetes/kubernetes/issues/72102
+https://stackoverflow.com/questions/50865788/kube-apiserver-unable-to-create-storage-backend
+http://dockone.io/question/4034
+
+- FIX
+ETCD URL was incorrectly specified in kube-apiserver.yaml as https while cert-key security was not yet in place
+Change that to http as follows:
+- --etcd-servers=http://192.168.60.101:2379
+
+== TROUBLESHOOTING 2
+Kubelet not registering node:
+...
+...
+Aug 07 13:13:43 ks2 kubelet[9938]: E0807 13:13:43.150737    9938 kubelet.go:2236] node "ks2" not found
+Aug 07 13:13:43 ks2 kubelet[9938]: E0807 13:13:43.253045    9938 kubelet.go:2236] node "ks2" not found
+Aug 07 13:13:43 ks2 kubelet[9938]: I0807 13:13:43.272527    9938 kubelet_node_status.go:73] Successfully registered node ks2
+Aug 07 13:13:43 ks2 kubelet[9938]: I0807 13:13:43.279047    9938 reconciler.go:154] Reconciler: start to sync state
+Aug 07 13:13:43 ks2 kubelet[9938]: E0807 13:13:43.351997    9938 kubelet_node_status.go:378] Error updating node status, will retry: error getting node "ks2": nodes "ks2" not found
+
+- FIX
+Restart kubelet seemed to fix it.
+
+Aug 07 13:17:41 ks2 kubelet[12155]: I0807 13:17:41.341795   12155 volume_manager.go:248] Starting Kubelet Volume Manager
+Aug 07 13:17:41 ks2 kubelet[12155]: I0807 13:17:41.344390   12155 desired_state_of_world_populator.go:130] Desired state populator starts to run
+Aug 07 13:17:41 ks2 kubelet[12155]: I0807 13:17:41.442935   12155 kubelet.go:1821] skipping pod synchronization - [container runtime is down]
+Aug 07 13:17:41 ks2 kubelet[12155]: I0807 13:17:41.442978   12155 kubelet_node_status.go:277] Setting node annotation to enable volume controller attach/detach
+Aug 07 13:17:41 ks2 kubelet[12155]: I0807 13:17:41.624051   12155 kubelet_node_status.go:70] Attempting to register node ks2
+Aug 07 13:17:41 ks2 kubelet[12155]: I0807 13:17:41.651884   12155 kubelet_node_status.go:112] Node ks2 was previously registered
+Aug 07 13:17:41 ks2 kubelet[12155]: I0807 13:17:41.651906   12155 kubelet_node_status.go:73] Successfully registered node ks2
+Aug 07 13:17:41 ks2 kubelet[12155]: I0807 13:17:41.660025   12155 kubelet.go:1821] skipping pod synchronization - [container runtime is down]
+Aug 07 13:17:41 ks2 kubelet[12155]: I0807 13:17:41.803039   12155 setters.go:518] Node became not ready: {Type:Ready Status:False LastHeartbeatTime:2019-08-07 13:17:41.803019378 +0530 IST m=+1.104673113 LastTransitionTime:2019-08-07 13:17:41.803019378 +0530 IST m=+1.104673113 Reason:KubeletNotReady Message:container runtime is down}
+Aug 07 13:17:41 ks2 kubelet[12155]: I0807 13:17:41.973846   12155 cpu_manager.go:155] [cpumanager] starting with none policy
+Aug 07 13:17:41 ks2 kubelet[12155]: I0807 13:17:41.973868   12155 cpu_manager.go:156] [cpumanager] reconciling every 10s
+Aug 07 13:17:41 ks2 kubelet[12155]: I0807 13:17:41.973875   12155 policy_none.go:42] [cpumanager] none policy: Start
+Aug 07 13:17:42 ks2 kubelet[12155]: E0807 13:17:42.074896   12155 kubelet.go:1637] Failed creating a mirror pod for "kube-scheduler-ks2_kube-system(50c22c6953e39f9c091c1e41cf6efa3b)": pods "kube-scheduler-ks2" already exists
+Aug 07 13:17:42 ks2 kubelet[12155]: E0807 13:17:42.080510   12155 kubelet.go:1637] Failed creating a mirror pod for "kube-controller-manager-ks2_kube-system(7b4edec443fb47a1d2aa7c66fa065598)": pods "kube-controller-manager-ks2" already exists
+Aug 07 13:17:42 ks2 kubelet[12155]: E0807 13:17:42.080681   12155 kubelet.go:1637] Failed creating a mirror pod for "kube-apiserver-ks2_kube-system(a73022fd2d7a2a14ebc70b55736a8d4c)": pods "kube-apiserver-ks2" already exists
+Aug 07 13:17:42 ks2 kubelet[12155]: I0807 13:17:42.211010   12155 reconciler.go:154] Reconciler: start to sync state
+
+-- NOTES --
+Installing kubelet also will install a couple of service files:
+/usr/lib/systemd/system/kubelet.service
+--> which references indirectly this - /usr/lib/systemd/system/kubelet.service.d/10-kubeadm.conf
+
+- STARTING IT AS IS ERRORS OUT - modify the service file as above and restart kubelet
+[root@ks1 kubelet.service.d]# systemctl enable kubelet
+Created symlink from /etc/systemd/system/multi-user.target.wants/kubelet.service to /usr/lib/systemd/system/kubelet.service.
+
+[root@ks1 kubelet.service.d]# systemctl start kubelet
+
+[root@ks1 kubelet.service.d]# journalctl -fu kubelet
+-- Logs begin at Mon 2019-07-29 18:26:16 IST. --
+Jul 29 19:39:27 ks1 systemd[1]: Started kubelet: The Kubernetes Node Agent.
+Jul 29 19:39:27 ks1 kubelet[9896]: F0729 19:39:27.336390    9896 server.go:190] failed to load Kubelet config file /var/lib/kubelet/config.yaml, error failed to read kubelet config file "/var/lib/kubelet/config.yaml", error: open /var/lib/kubelet/config.yaml: no such file or directory
+Jul 29 19:39:27 ks1 systemd[1]: kubelet.service: main process exited, code=exited, status=255/n/a
+Jul 29 19:39:27 ks1 systemd[1]: Unit kubelet.service entered failed state.
+Jul 29 19:39:27 ks1 systemd[1]: kubelet.service failed.
+Jul 29 19:39:37 ks1 systemd[1]: kubelet.service holdoff time over, scheduling restart.
+Jul 29 19:39:37 ks1 systemd[1]: Stopped kubelet: The Kubernetes Node Agent.
+Jul 29 19:39:37 ks1 systemd[1]: Started kubelet: The Kubernetes Node Agent.
+Jul 29 19:39:37 ks1 kubelet[9909]: F0729 19:39:37.511865    9909 server.go:190] failed to load Kubelet config file /var/lib/kubelet/config.yaml, error failed to read kubelet config file "/var/lib/kubelet/config.yaml", error: open /var/lib/kubelet/config.yaml: no such file or directory
+Jul 29 19:39:37 ks1 systemd[1]: kubelet.service: main process exited, code=exited, status=255/n/a
+Jul 29 19:39:37 ks1 systemd[1]: Unit kubelet.service entered failed state.
+Jul 29 19:39:37 ks1 systemd[1]: kubelet.service failed.
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+EXAMPLES, REFERENCES
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Following are some example possibilities:
+/etc/systemd/system/kubelet.service:
+https://github.com/kubernetes-retired/contrib/blob/master/init/systemd/kubelet.service
+(reference from https://medium.com/containerum/4-ways-to-bootstrap-a-kubernetes-cluster-de0d5150a1e4)
+
+[Unit]
+Description=Kubernetes Kubelet Server
+Documentation=https://kubernetes.io/docs/concepts/overview/components/#kubelet https://kubernetes.io/docs/reference/generated/kubelet/
+After=docker.service
+Requires=docker.service
+
+[Service]
+WorkingDirectory=/var/lib/kubelet
+EnvironmentFile=-/etc/kubernetes/config
+EnvironmentFile=-/etc/kubernetes/kubelet
+ExecStart=/usr/bin/kubelet \
+	    $KUBE_LOGTOSTDERR \
+	    $KUBE_LOG_LEVEL \
+	    $KUBELET_KUBECONFIG \
+	    $KUBELET_ADDRESS \
+	    $KUBELET_PORT \
+	    $KUBELET_HOSTNAME \
+	    $KUBE_ALLOW_PRIV \
+	    $KUBELET_ARGS
+Restart=on-failure
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target
+
+~~~~
+PROD OPTION:
+~~~~
+/etc/systemd/system/kubelet.service:
+
+[Unit]
+Description=kubelet: The Kubernetes Node Agent
+Documentation=http://kubernetes.io/docs/
+
+[Service]
+ExecStart=/usr/bin/kubelet
+Restart=always
+StartLimitInterval=0
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+
+/etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+...
+...

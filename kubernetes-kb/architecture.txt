@@ -1,0 +1,183 @@
+=======================
+KUBERNETES ARCHITECTURE
+=======================
+https://medium.com/jorgeacetozi/kubernetes-master-components-etcd-api-server-controller-manager-and-scheduler-3a0179fc8186
+https://kubernetes.io/docs/concepts/overview/components/
+https://supergiant.io/blog/understanding-kubernetes-kube-proxy/
+
+===================================
+MASTER AND NODE (WORKER) COMPONENTS
+===================================
+https://elastisys.com/wp-content/uploads/2018/01/kubernetes-ha-setup.pdf
+
+- The master components manage the state of the cluster. 
+This includes accepting client requests 
+(describing the desired state), 
+scheduling containers and running control loops to drive the actual cluster state towards the desired state. 
+
+These components are:
+
+apiserver: a REST API supporting basic CRUD operations on API objects (such as pods, deployments, and services).
+This is the endpoint that a cluster administrator communicates with, for example, using kubectl. The apiserver, in
+itself, is stateless. Instead it uses a distributed key-value storage system (etcd) as its backend 
+for storing all cluster state.
+
+controller managers: runs the control/reconciliation loops that watch the desired state in the apiserver and attempt to
+move the actual state towards the desired state. Internally it consists of many different controllers, of which the
+replication controller is a prominent one ensuring that the right number of replica pods are running for each
+deployment.
+
+scheduler: takes care of pod placement across the set of availabile nodes, striving to balance resource consumption
+to not place excessive load on any cluster node. It also takes user scheduling restrictions into account, such as 
+(anti-)affinity rules.
+
+- The node components run on every cluster node. These include:
+
+container runtime: such as Docker, to execute containers on the node.
+
+kubelet: executes containers (pods) on the node as dictated by the control plane’s scheduling, and ensures the
+health of those pods (for example, by restarting failed pods).
+
+kube-proxy: a network proxy/loadbalancer that implements the Service abstraction. It programs the iptables rules on
+the node to redirect service IP requests to one of its registered backend pods.
+
+There is no formal requirement for master components to run on any particular host in the cluster, however, typically
+these control-plane components are grouped together to run one or more master nodes. With the exception of etcd,
+which may be set up to run on its own machine(s), these master nodes typically include all components — both the
+control plane master components and the node components — but are dedicated to running the control plane and to
+not process any application workloads (typically by being tainted).
+Other nodes are typically designated as worker nodes (or simply nodes) and only include the node components.
+
+===================================
+CONFIG FILES FOLDER STRUCTURE
+===================================
+Assuming same nodes host etcd, master and worker
+
+/etc/kubernetes:
+kubelet.conf
+controller-manager.conf
+kubeadmin.conf
+scheduler.conf --> if using separate user for scheduler??
+
+/etc/kubernetes/manifests:
+kube-apiserver.yaml
+kube-controller-manager.yaml
+kube-scheduler.yaml
+
+/etc/kubernetes/addons:
+flannel.yml/calico.yaml
+kube-dns.yml/coredns.yaml
+kube-proxy.yml
+nginx-ingress-controller.yml
+
+/etc/kubernetes/addons/limits:
+(for kind: LimitRange)
+default.yaml
+kube-system.yaml
+other-namespace.yaml
+
+=======
+MASTER
+=======
+https://medium.com/jorgeacetozi/kubernetes-master-components-etcd-api-server-controller-manager-and-scheduler-3a0179fc8186
+
+namespace - kube-system
+Verified in p:
+etcd
+kube-apiserver
+kube-controller-manager
+kube-scheduler
+kube-addon-manager
+no calico/flannel if pods have routable IPs
+
+Verified in bigone:
+etcd
+kube-apiserver
+kube-controller-manager
+kube-scheduler
+kube-proxy --> not a standard requirement in master
+calico-node --> required as there is no routable IPs --> not a standard requirement in master??
+kube-addon-manager
+
+
+Master runs the following:
+- API Server - kube-apiserver - core component
+- Scheduler - kube-scheduler - core component
+- Controller Manager - kube-controller-manager - core component
+- ETCD - etcd - - core component - image gcr.io/google_containers/etcd-amd64 
+- overlay (flannel or calico) - core component
+- kube-addon-manager - additional component
+- kube-proxy - core component - (if master is also schedulable)
+- coredns - core component - (if master is also schedulable)
+
+Note: ETCD can be on the master itself or on a different machine
+
+================
+NODES (WORKERS)
+================
+namespace - kube-system
+on p:
+none in kube-system namespace
+
+on bigone:
+kube-proxy
+calico-node --> required as there is no routable IPs
+calico-typha --> ??
+coredns - mapped to kube-dns service
+
+haproxy-ingress-np --> not a core component - this is for ingress control
+
+=================
+COMPONENT DETAILS
+=================
+ETCD
+- Stores cluster configuration information and state of the cluster, pods etc
+- Leader, follower, candidate
+- Consensus by Raft algorithm - https://raft.github.io/raft.pdf
+- ETCDCTL command - add/modify/delete keys, verify cluster health, add/remove etcd nodes, generate DB snapshots for backups
+- 'watch' feature notifies watchers like apiserver upon changes to keys
+- Play with 5 node cluster here http://play.etcd.io
+
+API SERVER
+- Main management point
+- Only component that talks to ETCD
+- Watches for new pods, changes to pods, changes to keys ... (watch mechanism)
+- Authenticates and authorizes - all API clients shuould be authenticated and authorized
+
+CONTROLLER MANAGER
+- Watches state of cluster - via watch feature
+- Makes necessary changes to achieve desired state upon notification
+- Shipped with Kubernetes - replication controller, endpoints controller, namespace controller
+- Creates namespaces and lifecycles them
+- Also, lifecycle functions such as namespace creation and lifecycle, event garbage collection, 
+  terminated-pod garbage collection, cascading-deletion garbage collection, node garbage collection, etc.
+
+SCHEDULER
+- Schedules pods on nodes with available resources
+- After scheduling is done, kubelet will create the pod in that node
+
+WHEN A POD IS CREATED
+kubectl writes to the API Server.
+API Server validates the request and persists it to etcd.
+etcd notifies back the API Server.
+API Server invokes the Scheduler.
+Scheduler decides where to run the pod on and return that to the API Server.
+API Server persists it to etcd.
+etcd notifies back the API Server.
+API Server invokes the Kubelet in the corresponding node.
+Kubelet talks to the Docker daemon using the API over the Docker socket to create the container.
+Kubelet updates the pod status to the API Server.
+API Server persists the new state in etcd.
+
+KUBE PROXY
+https://snapcraft.io/kube-proxy
+https://kubernetes.io/docs/reference/command-line-tools-reference/kube-proxy/
+- has all settings also
+
+Kubernetes network proxy runs on each node.
+The Kubernetes network proxy runs on each node. 
+This reflects services as defined in the Kubernetes API on each node and can do simple TCP,UDP stream forwarding 
+or round robin TCP,UDP forwarding across a set of backends. Service cluster ips and ports are currently 
+found through Docker-links-compatible environment variables specifying ports opened by the service proxy. 
+There is an optional addon that provides cluster DNS for these cluster IPs. The user must create a service 
+with the apiserver API to configure the proxy.

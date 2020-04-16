@@ -1,0 +1,260 @@
+===========================================================================
+KVM, QEMU, VIRT-MANAGER ON CENTOS7 on Virtualbox - nested virtualization
+===========================================================================
+Reference docs:
+KVM - https://www.linuxtechi.com/install-kvm-hypervisor-on-centos-7-and-rhel-7/
+Bridge - https://www.golinuxcloud.com/how-to-configure-network-bridge-nmtui-linux/
+
+Old doc - https://github.com/coderdba/NOTES/blob/master/packer-kb/install-on-centos-and-kvm.txt
+
+For Virtualbox nested virtualization 
+- https://github.com/coderdba/NOTES/blob/master/virtualbox-kb/nested-virtualization-kvm-vbox.txt
+
+Additional stuff:
+https://www.linuxquestions.org/questions/linux-laptop-and-netbook-25/how-do-you-kvm-on-vmware-virtualbox-4175611275/
+--> about vbox not supporting further virtualization on a vm
+
+==========================
+INSTALL
+==========================
+Check if CPU supports virtualization
+NOTE: Virtualbox VM did not show vmx/svm - still, will give a try
+# grep -E '(vmx|svm)' /proc/cpuinfo
+We should get the word either vmx or svm in the output, otherwise CPU doesn’t support virtualization.
+--> you can see vmx now!!
+flags		: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc eagerfpu pni pclmulqdq monitor vmx ssse3 cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt aes xsave avx rdrand hypervisor lahf_lm abm 3dnowprefetch tpr_shadow flexpriority fsgsbase avx2 invpcid rdseed clflushopt flush_l1d
+
+Install packages
+# yum install -y qemu-kvm qemu-img virt-manager libvirt libvirt-python libvirt-client virt-install virt-viewer bridge-utils  libguestfs-tools
+
+Verify modules
+# lsmod | grep kvm
+Expected output:
+kvm_intel             183621  0 
+kvm                   586948  1 kvm_intel
+irqbypass              13503  1 kvm
+
+--> If desired output does not appear, then run the following and try again:
+# modprobe kvm
+# modprobe kvm-intel or kvm-amd(depends on your cpu)
+
+Start service
+
+# systemctl enable libvirtd
+# systemctl start libvirtd
+# systemctl status libvirtd
+● libvirtd.service - Virtualization daemon
+   Loaded: loaded (/usr/lib/systemd/system/libvirtd.service; enabled; vendor preset: enabled)
+   Active: active (running) since Tue 2020-02-18 21:22:44 IST; 13h ago
+     Docs: man:libvirtd(8)
+           https://libvirt.org
+ Main PID: 5660 (libvirtd)
+    Tasks: 19 (limit: 32768)
+   CGroup: /system.slice/libvirtd.service
+           ├─3904 /usr/sbin/dnsmasq --conf-file=/var/lib/libvirt/dnsmasq/default.conf --leasefile-ro --dhcp-script=/u...
+           ├─3906 /usr/sbin/dnsmasq --conf-file=/var/lib/libvirt/dnsmasq/default.conf --leasefile-ro --dhcp-script=/u...
+           └─5660 /usr/sbin/libvirtd
+
+Feb 19 10:02:16 centos7model-server dnsmasq[3904]: using nameserver 10.0.2.3#53
+Feb 19 10:02:28 centos7model-server dnsmasq[3904]: reading /etc/resolv.conf
+Feb 19 10:02:28 centos7model-server dnsmasq[3904]: using nameserver 192.168.255.104#53
+Feb 19 10:02:28 centos7model-server dnsmasq[3904]: using nameserver 192.168.255.136#53
+Feb 19 10:02:38 centos7model-server dnsmasq[3904]: reading /etc/resolv.conf
+Feb 19 10:02:38 centos7model-server dnsmasq[3904]: using nameserver 10.0.2.3#53
+Feb 19 10:02:46 centos7model-server dnsmasq[3904]: reading /etc/resolv.conf
+Feb 19 10:02:46 centos7model-server dnsmasq[3904]: using nameserver 10.92.224.227#53
+Feb 19 10:02:46 centos7model-server dnsmasq[3904]: using nameserver 10.97.40.216#53
+Feb 19 10:02:46 centos7model-server dnsmasq[3904]: using nameserver 10.64.40.216#53
+
+Install X-Windows system
+# yum install "@X Window System" xorg-x11-xauth xorg-x11-fonts-* xorg-x11-utils -y
+
+Start virt-manager - for GUI based VM creation
+# virt-manager
+--> This will pop up a GUI with various new VM creation options - from ISO, kickstart, image etc
+
+==============================
+SET HOSTNAME AND IP
+==============================
+(As done in Virtualbox VM)
+# hostnamectl set-hostname kvm001
+# nmtui --> to edit network
+--> edit enp0s8 in Virtualbox VM
+--> 192.168.99.21 as IP address
+
+# cd /etc/sysconfig/network-scripts
+# mv ifcfg-Wired_connection_2 ifcfg-enp0s8  --> This may be required if virtualbox has given odd names to files
+# systemctl restart NetworkManager
+# ifdown enp0s8
+# ifup enp0s8
+
+==============================
+SETUP BRIDGE NETWORK
+==============================
+
+- LIST CURRENT BRIDGES
+#  brctl show
+bridge name	bridge id		STP enabled	interfaces
+virbr0		8000.52540008e8f5	yes		virbr0-nic   
+--> this is created by libvirt (I guess I had installed libvirt earlier in regular VMs also, so, centos7model also has it)
+
+# ip a
+4: virbr0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default qlen 1000
+    link/ether 52:54:00:08:e8:f5 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.122.1/24 brd 192.168.122.255 scope global virbr0
+       valid_lft forever preferred_lft forever
+5: virbr0-nic: <BROADCAST,MULTICAST> mtu 1500 qdisc pfifo_fast master virbr0 state DOWN group default qlen 1000
+    link/ether 52:54:00:08:e8:f5 brd ff:ff:ff:ff:ff:ff
+
+Config files for this are here:
+# cd /var/lib/libvirt/dnsmasq
+
+# cat default.conf
+##WARNING:  THIS IS AN AUTO-GENERATED FILE. CHANGES TO IT ARE LIKELY TO BE
+##OVERWRITTEN AND LOST.  Changes to this configuration should be made using:
+##    virsh net-edit default
+## or other application using the libvirt API.
+##
+## dnsmasq conf file created by libvirt
+strict-order
+pid-file=/var/run/libvirt/network/default.pid
+except-interface=lo
+bind-dynamic
+interface=virbr0
+dhcp-range=192.168.122.2,192.168.122.254
+dhcp-no-override
+dhcp-authoritative
+dhcp-lease-max=253
+dhcp-hostsfile=/var/lib/libvirt/dnsmasq/default.hostsfile
+addn-hosts=/var/lib/libvirt/dnsmasq/default.addnhosts
+
+
+- CREATE A NEW BRIDGE
+High level - create a bridge, add a slave nic or modify an existing nic to use that bridge
+Use IPs in the same range as of bridged/host-only network of Virtualbox host 
+if the new KVM-nested-VMs must be able to talk to outside of the Virtualbox VM.
+
+https://www.golinuxcloud.com/how-to-configure-network-bridge-nmtui-linux/
+https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/6/html/deployment_guide/s2-networkscripts-interfaces_network-bridge (bond and bridge both)
+
+# nmtui
+Edit a conn
+Add
+Bridge
+   Profile Name - br10
+   Device - nm-br10 --> OR, just br10 (this will show in "brctl show")
+Slaves
+   Add
+      Ethernet
+         Profile Name - ethbr10 --> Here we are adding a new interface (we mostly can modify an existing interface itself)
+         Device - ethbr10
+IPV4 Configuration
+   Manual (give IPs from virtualbox bridge/host-only network IP range for KVMs be accessible from outside of the KVM host)
+   Address - 192.168.99.3 (192.168.99.1 is used by Vbox host)
+   Gateway - 192.168.99.2 (192.168.99.1 is used by Vbox host)
+
+# cat ifcfg-br10
+STP=yes
+BRIDGING_OPTS=priority=32768
+TYPE=Bridge
+PROXY_METHOD=none
+BROWSER_ONLY=no
+BOOTPROTO=none
+DEFROUTE=yes
+IPV4_FAILURE_FATAL=no
+IPV6INIT=yes
+IPV6_AUTOCONF=yes
+IPV6_DEFROUTE=yes
+IPV6_FAILURE_FATAL=no
+IPV6_ADDR_GEN_MODE=stable-privacy
+NAME=br10
+UUID=4fe0f0a8-c17f-4585-8fe0-20add977084d
+DEVICE=nm-br10
+ONBOOT=yes
+IPADDR=192.168.99.3
+PREFIX=24
+GATEWAY=192.168.99.2
+
+
+OR, if DEVICE is given as just 'br10':
+STP=yes
+BRIDGING_OPTS=priority=32768
+TYPE=Bridge
+PROXY_METHOD=none
+BROWSER_ONLY=no
+BOOTPROTO=none
+IPADDR=192.168.99.3
+PREFIX=24
+GATEWAY=192.168.99.2
+DEFROUTE=yes
+IPV4_FAILURE_FATAL=no
+IPV6INIT=yes
+IPV6_AUTOCONF=yes
+IPV6_DEFROUTE=yes
+IPV6_FAILURE_FATAL=no
+IPV6_ADDR_GEN_MODE=stable-privacy
+NAME=br10
+UUID=7cafbd78-835e-42ae-95a9-69312ce0a608
+DEVICE=br10
+ONBOOT=yes
+
+
+
+# cat ifcfg-ethbr10
+TYPE=Ethernet
+NAME=ethbr10
+UUID=ba0202e1-e8d4-4ee8-8f25-ed6e1d5eb047
+DEVICE=ethbr10
+ONBOOT=yes
+BRIDGE_UUID=4fe0f0a8-c17f-4585-8fe0-20add977084d
+BRIDGE=nm-br10
+
+- OR, if 'device' for bridge is given as just br10
+TYPE=Ethernet
+NAME=ethbr10
+UUID=44e28bc6-96e8-4cfa-8407-38e360df16b9
+DEVICE=ethbr10
+ONBOOT=yes
+BRIDGE=br10
+BRIDGE_UUID=7cafbd78-835e-42ae-95a9-69312ce0a608
+
+- VERIFY
+[root@kvm001 network-scripts]# brctl show
+bridge name	bridge id		   STP enabled	interfaces
+br10		   8000.000000000000	yes		         --> somehow interface ethbr10 is not showing up
+virbr0		8000.52540008e8f5	yes		   virbr0-nic
+
+# ip a 
+--> this shows the IP we entered for the "Address - 192.168.99.3" during adding 'slave' to the bridge in nmcli
+--> this is showing up as 'br10' (or nm-br10 as we have defined) (expected behavior) and not 'ethbr10' - this is ok
+12: br10: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default qlen 1000
+    link/ether da:5d:ba:14:fe:7c brd ff:ff:ff:ff:ff:ff
+    inet 192.168.99.3/24 brd 192.168.99.255 scope global noprefixroute br10
+
+-- PING FROM HOST (if this kvm host is a Virtualbox VM)
+$ ping 192.168.99.3 
+PING 192.168.99.3 (192.168.99.3): 56 data bytes
+64 bytes from 192.168.99.3: icmp_seq=0 ttl=64 time=0.586 ms
+
+$ ping 192.168.99.2
+PING 192.168.99.2 (192.168.99.2): 56 data bytes
+
+-- Manual method (incomplete)
+# cd /etc/sysconfig/network-scripts
+# cp ifcfg-enp0s8 ifcfg-br0 --> to model upon an existing network
+
+ifcfg-br10: (example)
+TYPE="Bridge"
+NAME="br10"
+DEVICE="br10"
+USERCTL="no"
+ONBOOT="yes"
+BOOTPROTO="none"
+
+
+
+- TO DELETE A BRIDGE
+https://unix.stackexchange.com/questions/31763/bring-down-and-delete-bridge-interface-thats-up
+[root@kvm001 ~]# ip link set br10 down
+[root@kvm001 ~]# brctl delbr br10
+

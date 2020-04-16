@@ -1,0 +1,144 @@
+https://kubernetes.io/docs/tasks/access-application-cluster/configure-access-multiple-clusters/#define-clusters-users-and-contexts
+
+
+------------------------------------------------------
+CREATE A USER CERT FOR KUBE-SYSTEM NAMESPACE
+------------------------------------------------------
+
+ca-config.json :
+
+{
+  "signing": {
+    "default": {
+      "expiry": "87600h"
+    },
+    "profiles": {
+      "kubernetes": {
+        "usages": ["signing", "key encipherment", "server auth", "client auth"],
+        "expiry": "87600h"
+      }
+    }
+  }
+}
+
+
+
+user-kubesystem-csr.json file:
+
+{
+  "CN": "user-kubesystem",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "IN",
+      "L": "INDIA",
+      "O": "INDIA",
+      "OU": "Kubernetes",
+      "ST": "Kubernetes"
+    }
+  ]
+}
+
+Run command: (user-kubesystem-gen.sh)
+
+cfssl gencert \
+-ca=/etc/kubernetes/pki/ca.pem \
+-ca-key=/etc/kubernetes/pki/ca-key.pem \
+-config=ca-config.json \
+-profile=kubernetes user-kubesystem-csr.json | \
+cfssljson -bare admin
+
+This will produce:
+
+user-kubesystem.pem
+user-kubesystem-key.pem
+user-kubesystem.csr
+
+------------------------------------------------------------------
+SET THE CLUSTER WITH CLUSTER'S CA CERT IN A LOCAL KUBECONFIG FILE
+------------------------------------------------------------------
+- SYNTAX
+kubectl config --kubeconfig=config-demo set-cluster development --server=https://1.2.3.4 --certificate-authority=fake-ca-file
+
+- ACTUAL
+kubectl config --kubeconfig=user-cert-config set-cluster kubernetes-dev \
+--server=https://192.168.8.11:6443 \
+--certificate-authority=/etc/kubernetes/pki/ca.pem
+
+-----------------------
+ADD USER'S CREDENTIALS
+-----------------------
+- SYNTAX
+kubectl config --kubeconfig=config-demo set-credentials developer --client-certificate=fake-cert-file --client-key=fake-key-seefile
+
+- ACTUAL
+kubectl config --kubeconfig=user-cert-config set-credentials user-for-kube-system \
+--client-certificate=user-kubesystem.pem \
+--client-key=user-kubesystem-key.pem
+--embed-certs=true
+
+----------------------------------------------
+ADD CONTEXT FOR THIS USER-CLUSTER COMBINATION
+----------------------------------------------
+NOTE: The 'user' is the argument to "set-credentials"  - that is user-for-kube-system
+
+- SYNTAX 
+kubectl config --kubeconfig=config-demo set-context dev-frontend --cluster=development --namespace=frontend --user=developer
+
+- ACTUAL
+kubectl config --kubeconfig=user-cert-config set-context ns-kube-system \
+--cluster=kubernetes-dev \
+--namespace=kube-system \
+--user=user-for-kube-system
+
+-----------------------
+VERIFY
+-----------------------
+kubectl config --kubeconfig=user-cert-config view
+--> This should list the contents of user-cert-config file
+
+-----------------------
+USE THE CONTEXT
+-----------------------
+- SYNTAX
+kubectl config --kubeconfig=config-demo use-context dev-frontend
+
+- ACTUAL
+kubectl config --kubeconfig=user-cert-config use-context ns-kube-system
+
+- VERIFY
+kubectl config --kubeconfig=user-cert-config current-context
+--> This should show ns-kube-system as the current context
+
+-----------------------
+GET THE PODS
+-----------------------
+- kubectl without kubeconfig directive
+-- Copy the kubeconfig file user-cert-config as ~/.kube/config 
+(or, add on to the existing ~/.kube/config - or set environment variable to consider multiple kubeconfig files)
+
+-- And, then run 
+
+# kubectl get pods
+NAME                           READY   STATUS    RESTARTS   AGE
+kube-apiserver-ksn1            1/1     Running   2          77m
+kube-controller-manager-ksn1   1/1     Running   12         6d22h
+kube-dns-cbc549dbd-7n658       3/3     Running   21         6d21h
+kube-flannel-ds-amd64-pjk5v    1/1     Running   23         6d22h
+kube-proxy-c58ll               1/1     Running   11         15d
+kube-scheduler-ksn1            1/1     Running   17         18d
+
+- kubectl with kubeconfig directive
+# kubectl get pods --kubeconfig=user-cert-config 
+NAME                           READY   STATUS    RESTARTS   AGE
+kube-apiserver-ksn1            1/1     Running   2          77m
+kube-controller-manager-ksn1   1/1     Running   12         6d22h
+kube-dns-cbc549dbd-7n658       3/3     Running   21         6d21h
+kube-flannel-ds-amd64-pjk5v    1/1     Running   23         6d22h
+kube-proxy-c58ll               1/1     Running   11         15d
+kube-scheduler-ksn1            1/1     Running   17         18d
+
+

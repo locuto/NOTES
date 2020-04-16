@@ -1,0 +1,84 @@
+======================================================
+AWX JOB SETUP - FIRST STEPS
+======================================================
+
+========================
+CREDENTIALS
+========================
+
+Set up the following type of credentials:
+
+1. Git (URL, username, key/password)
+    - Choose 'scm' as the type of credential (scm=source code management)
+    
+2. Host access (like ssh key of host)
+--> NOTE: For a group of hosts in 'inventory' the key should be same
+    - Choose the type host
+
+3. ansible vault password
+    - Choose the type vault
+
+========================
+INVENTORY
+========================
+Add your hosts to lists of hosts
+
+========================
+PROJECT (git)
+========================
+Add your git project - like "git - ansible-telegraf-roles"
+Give SCM credential for AWX to logon to git
+
+NOTE: 
+Caution: If no option is set - this has to be manually synched upon changes to Git repo
+Fix: Choose the option 'UPDATE REVISION ON LAUNCH' and provide a cache timeout of about 120 sec
+
+
+========================
+JOB TEMPLATE
+========================
+Choose Templates --> job template
+Add a job template to run one of the projects.
+- Give the following
+-- inventory
+-- project (the git project)
+-- playbook - the yml file to run from the repo (one may have more than one run-yml and choose which you want)
+-- credential - of the hosts  (only one credential can be chosen - so all hosts in the inventory should have the same key)
+-- forks - number of parallel processes (not same as job slicing)
+-- limit - limit on which hosts to run (comma separated or pattern - as per ansible standard)
+-- job tags - tags you want to use (like base, etcd, telegraf and such)
+-- job slicing - running multiple jobs intrinsically, each on a portion of inventory - set this to more than 1 if ok
+-- OPTIONS
+        - Enable privilege escalation (to root) - check this 
+        - Allow provisioning callbacks (not very sure what this is) - did not check this
+        - Enable concurrent jobs - check this
+        - Use fact cache - did not check this
+
+========================
+SCHEDULE JOB
+========================
+NOTE: Date defaults to 'tomorrows' date - take a look and choose correct date
+
+In the job template itself - choose 'SCHEDULE' button - and, add a schedule
+
+
+23 - Telegraf RPM Install - with git - ansible-telegraf-roles
+Workflow Job
+
+STARTED  3/18/2019 10:25:00 AM
+JOB TEMPLATE  Telegraf RPM Install - with git - ansible-telegraf-roles
+INVENTORY  ti-lab-gws
+24 - Telegraf RPM Install - with git - ansible-telegraf-roles
+Playbook Run
+Slice Job 1/2
+
+WORKFLOW JOB  Telegraf RPM Install - with git - ansible-telegraf-roles
+JOB TEMPLATE  Telegraf RPM Install - with git - ansible-telegraf-roles
+INVENTORY  ti-lab-gws
+PROJECT  git - ansible-telegraf-roles
+CREDENTIALS  
+k8s-metal-key1
+25 - Telegraf RPM Install - with git - ansible-telegraf-roles
+Playbook Run
+Slice Job 2/2
+

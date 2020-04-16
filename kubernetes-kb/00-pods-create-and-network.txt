@@ -1,0 +1,1006 @@
+=========================
+PODS
+=========================
+
+TBD - various ways of exposing services:
+  In-Progress - go through and try this (HostNetwork, HostPort, NodePort, Ingress, LoadBalancer): 
+  http://alesnosek.com/blog/2017/02/14/accessing-kubernetes-pods-from-outside-of-the-cluster/
+  
+  TBD - go through and try this (external IP): 
+  https://kubernetes.io/docs/tutorials/stateless-application/expose-external-ip-address/
+  
+  TBD - Ingress
+  https://kubernetes.io/docs/concepts/services-networking/ingress/
+  https://medium.com/google-cloud/kubernetes-nodeport-vs-loadbalancer-vs-ingress-when-should-i-use-what-922f010849e0
+  
+  (see also https://blog.getambassador.io/kubernetes-ingress-nodeport-load-balancers-and-ingress-controllers-6e29f1c44f2d --> https://github.com/kubernetes/ingress-nginx
+  -> https://github.com/nginxinc/kubernetes-ingress/
+  
+  TBD - NodePort, LoadBalancer
+  https://kubernetes.io/docs/tasks/administer-cluster/access-cluster-services/  (theory)
+  --> https://kubernetes.io/docs/concepts/services-networking/service/  (services, clusterIP etc concepts, examples)
+  --> https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands#expose
+  https://medium.com/google-cloud/kubernetes-nodeport-vs-loadbalancer-vs-ingress-when-should-i-use-what-922f010849e0
+  
+  TBD - Load Balancer?  Also, one pod two containers
+  http://containertutorials.com/get_started_kubernetes/k8s_example.html
+  https://medium.com/google-cloud/kubernetes-nodeport-vs-loadbalancer-vs-ingress-when-should-i-use-what-922f010849e0
+
+  TBD: https://medium.com/google-cloud/kubernetes-nodeport-vs-loadbalancer-vs-ingress-when-should-i-use-what-922f010849e0
+  
+  TBD: Services, security, https://kubernetes.io/docs/concepts/services-networking/connect-applications-service/
+      (from https://kubernetes.io/docs/tasks/access-application-cluster/service-access-application-cluster/#creating-a-service-for-an-application-running-in-two-pods)
+  
+  TBD: Entrypoint https://stackoverflow.com/questions/33887194/how-to-set-multiple-commands-in-one-yaml-file-with-kubernetes
+  
+Know flannel networking: https://blog.laputa.io/kubernetes-flannel-networking-6a1cb1f8ec7c
+
+https://linuxthegreat.wordpress.com/2017/10/17/installing-kubernetes-1-8-1-on-centos-7/ - basic nginx with nodeport forward
+https://www.howtoforge.com/tutorial/centos-kubernetes-docker-cluster/
+https://neuvector.com/network-security/advanced-kubernetes-networking/
+https://www.mirantis.com/blog/introduction-to-yaml-creating-a-kubernetes-deployment/
+https://kubernetes.io/docs/tasks/run-application/run-stateless-application-deployment/
+
+http://kubernetesbyexample.com/services/ --> services
+
+
+Playgrounds:
+https://www.katacoda.com/courses/kubernetes/playground
+https://labs.play-with-k8s.com/
+
+====================
+FIRST TRIAL - NGINX
+====================
+https://linuxthegreat.wordpress.com/2017/10/17/installing-kubernetes-1-8-1-on-centos-7/
+https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+http://containertutorials.com/get_started_kubernetes/k8s_example.html
+
+----------------------
+CREATE YAML nginx.yaml
+----------------------
+# https://kubernetes.io/docs/tasks/run-application/run-stateless-application-deployment/
+#apiVersion: apps/v1 # for versions before 1.9.0 use apps/v1beta2
+apiVersion: apps/v1beta2 # for versions before 1.9.0 use apps/v1beta2
+kind: Deployment
+metadata:
+  name: nginx-deployment
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+  replicas: 2 # tells deployment to run 2 pods matching the template
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.7.9
+        ports:
+        - containerPort: 80
+        
+----------------------
+CREATE IT
+----------------------
+# kubectl apply -f nginx-deployment-kubsite.yml
+
+# kubectl get pods
+NAME                                READY   STATUS    RESTARTS   AGE
+nginx-deployment-5c689d88bb-f8l2r   1/1     Running   0          14h
+nginx-deployment-5c689d88bb-ptcfz   1/1     Running   0          14h
+
+# kubectl get pods -o wide
+NAME                                READY   STATUS    RESTARTS   AGE    IP            NODE   NOMINATED NODE
+nginx-deployment-5c689d88bb-5w47h   1/1     Running   0          4d4h   192.168.2.3   k02    <none>
+nginx-deployment-5c689d88bb-psj4h   1/1     Running   1          4d4h   192.168.1.4   k01    <none>
+(NOTE: The IPs of two pods are different at the third digit)
+
+# kubectl get deployments
+NAME               DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
+nginx-deployment   2         2         2            2           14h
+
+- VERIFY
+
+On nodes:
+# docker ps |grep ngin
+fead827c5d51        nginx                  "nginx -g 'daemon of…"   9 minutes ago       Up 9 minutes                            k8s_nginx_nginx-85c8f76bb5-df77c_default_ea105e8c-f220-11e8-b2d7-080027104420_0
+45f39e64f72b        k8s.gcr.io/pause:3.1   "/pause"                 10 minutes ago      Up 10 minutes                           k8s_POD_nginx-85c8f76bb5-df77c_default_ea105e8c-f220-11e8-b2d7-080027104420_0
+
+- DESCRIBE
+
+# kubectl describe pod nginx-deployment
+Name:               nginx-deployment-5c689d88bb-5w47h
+Namespace:          default
+Priority:           0
+PriorityClassName:  <none>
+Node:               k02/192.168.11.102
+Start Time:         Thu, 29 Nov 2018 10:48:59 +0530
+Labels:             app=nginx
+                    pod-template-hash=5c689d88bb
+Annotations:        <none>
+Status:             Running
+IP:                 192.168.2.3
+Controlled By:      ReplicaSet/nginx-deployment-5c689d88bb
+Containers:
+  nginx:
+    Container ID:   docker://00d5eeab91699a41576430475ac62a84179e32b3822089eebd6c03df49888a02
+    Image:          nginx:1.7.9
+    Image ID:       docker-pullable://nginx@sha256:e3456c851a152494c3e4ff5fcc26f240206abac0c9d794affb40e0714846c451
+    Port:           80/TCP
+    Host Port:      0/TCP
+    State:          Running
+      Started:      Thu, 29 Nov 2018 10:49:00 +0530
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-z8mrv (ro)
+Conditions:
+  Type              Status
+  Initialized       True 
+  Ready             True 
+  ContainersReady   True 
+  PodScheduled      True 
+Volumes:
+  default-token-z8mrv:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-z8mrv
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     node.kubernetes.io/not-ready:NoExecute for 300s
+                 node.kubernetes.io/unreachable:NoExecute for 300s
+Events:
+  Type    Reason     Age    From               Message
+  ----    ------     ----   ----               -------
+  Normal  Scheduled  9m29s  default-scheduler  Successfully assigned default/nginx-deployment-5c689d88bb-5w47h to k02
+  Normal  Pulled     9m29s  kubelet, k02       Container image "nginx:1.7.9" already present on machine
+  Normal  Created    9m28s  kubelet, k02       Created container
+  Normal  Started    9m28s  kubelet, k02       Started container
+
+Name:               nginx-deployment-5c689d88bb-psj4h
+Namespace:          default
+Priority:           0
+PriorityClassName:  <none>
+Node:               k01/192.168.11.101
+Start Time:         Thu, 29 Nov 2018 10:48:59 +0530
+Labels:             app=nginx
+                    pod-template-hash=5c689d88bb
+Annotations:        <none>
+Status:             Running
+IP:                 192.168.1.4
+Controlled By:      ReplicaSet/nginx-deployment-5c689d88bb
+Containers:
+  nginx:
+    Container ID:   docker://e639440d41fef17888464fb5f2106eaae050649f67608e73c68a771c59dee058
+    Image:          nginx:1.7.9
+    Image ID:       docker-pullable://nginx@sha256:e3456c851a152494c3e4ff5fcc26f240206abac0c9d794affb40e0714846c451
+    Port:           80/TCP
+    Host Port:      0/TCP
+    State:          Running
+      Started:      Thu, 29 Nov 2018 10:49:00 +0530
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-z8mrv (ro)
+Conditions:
+  Type              Status
+  Initialized       True 
+  Ready             True 
+  ContainersReady   True 
+  PodScheduled      True 
+Volumes:
+  default-token-z8mrv:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-z8mrv
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     node.kubernetes.io/not-ready:NoExecute for 300s
+                 node.kubernetes.io/unreachable:NoExecute for 300s
+Events:
+  Type    Reason     Age    From               Message
+  ----    ------     ----   ----               -------
+  Normal  Scheduled  9m29s  default-scheduler  Successfully assigned default/nginx-deployment-5c689d88bb-psj4h to k01
+  Normal  Pulled     9m28s  kubelet, k01       Container image "nginx:1.7.9" already present on machine
+  Normal  Created    9m28s  kubelet, k01       Created container
+  Normal  Started    9m28s  kubelet, k01       Started container
+
+- DESCRIBE SERVICE
+http://kubernetesbyexample.com/services/
+
+# kubectl describe svc nginx-service
+Name:                     nginx-service
+Namespace:                default
+Labels:                   <none>
+Annotations:              <none>
+Selector:                 app=nginx
+Type:                     NodePort
+IP:                       10.99.53.183
+Port:                     <unset>  80/TCP
+TargetPort:               80/TCP
+NodePort:                 <unset>  31945/TCP
+Endpoints:                192.168.1.4:80,192.168.2.3:80  --> Note: These are the pod IPs as in kubectl get pods -o wide
+Session Affinity:         None
+External Traffic Policy:  Cluster
+Events:                   <none>
+
+--------------------------------------------
+EXPOSE PORT - 'WITHIN' THE CLUSTER
+--------------------------------------------
+Note: This command will create service with the name “nginx-service”. 
+Service will be accessible on the port given by “–port” option for the “–target-port”. 
+Target port will be of pod. Service will be accessible within the cluster only. 
+In order to access it using your host IP “NodePort” option will be used.
+
+# kubectl expose deployment nginx-deployment --name=nginx-service --port=80 --target-port=80 --type=NodePort
+
+# kubectl get svc
+NAME            TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
+kubernetes      ClusterIP   10.96.0.1      <none>        443/TCP        19h
+nginx-service   NodePort    10.99.53.183   <none>        80:31945/TCP   7s
+
+Explanation: https://linuxthegreat.wordpress.com/2017/10/17/installing-kubernetes-1-8-1-on-centos-7/
+  The expose command abocewill create service with the name “nginx-service”. 
+  Service will be accessible on the port given by “–port” option for the “–target-port”. 
+  Target port will be of pod. Service will be accessible within the cluster only. 
+  In order to access it using your host IP “NodePort” option will be used.
+
+  –type=NodePort :- when this option is given k8s tries to find out  one of free port in the range 30000-32767 
+  on all the VMs of the cluster and binds the underlying service with it. 
+  If no such port found then it will return with an error.
+
+- GET PORT FORWARD INFO
+# iptables-save | grep ngin
+-A KUBE-NODEPORTS -p tcp -m comment --comment "default/nginx-service:" -m tcp --dport 31945 -j KUBE-MARK-MASQ
+-A KUBE-NODEPORTS -p tcp -m comment --comment "default/nginx-service:" -m tcp --dport 31945 -j KUBE-SVC-GKN7Y2BSGW4NJTYL
+-A KUBE-SERVICES ! -s 192.168.0.0/16 -d 10.99.53.183/32 -p tcp -m comment --comment "default/nginx-service: cluster IP" -m tcp --dport 80 -j KUBE-MARK-MASQ
+-A KUBE-SERVICES -d 10.99.53.183/32 -p tcp -m comment --comment "default/nginx-service: cluster IP" -m tcp --dport 80 -j KUBE-SVC-GKN7Y2BSGW4NJTYL
+
+- CONNECT
+
+Note: In the following get svc listing, service-ip is the cluster-ip and its port is the first (80) in PORT(S)
+      As we have exposed NodePort also, we can use master or worker host IPs and use the second IP (31945) in PORT(S)
+NAME            TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
+nginx-service   NodePort    10.99.53.183   <none>        80:31945/TCP   7s
+
+-- Connect using node IP and host port 
+   (31945 is port of host machine as in the KUBE-NODEPORTS in iptables and also showing in get svc)
+   
+Note: With service and nodeport, it is accessible only with node-ip and nodePort
+https://kubernetes.io/docs/concepts/services-networking/service/
+
+# curl -I http://192.168.11.101:31945
+HTTP/1.1 200 OK
+Server: nginx/1.7.9
+Date: Thu, 29 Nov 2018 06:03:26 GMT
+Content-Type: text/html
+Content-Length: 612
+Last-Modified: Tue, 23 Dec 2014 16:25:09 GMT
+Connection: keep-alive
+ETag: "54999765-264"
+Accept-Ranges: bytes
+
+Or, use browser and go to: http://192.168.11.101:31945
+You will get "welcome nginx" page
+
+-- Connect using master IP
+Not TBD anymore - this hung - expected behaviour.  This is accessible only via node-IP
+# curl -I http://192.168.11.100:31945
+
+-- Connect using cluster-ip 
+Not TBD anymore: This hung (check https://github.com/kubernetes/kubernetes/issues/7996)
+                  This is expected behaviour to hang - it is accessible only via node-IP. Cluster IP is not routable. 
+                  https://kubernetes.io/docs/concepts/services-networking/service/
+
+# curl -I http://10.99.53.183:80
+# curl -I http://10.99.53.183:31945
+
+--------------------------------------------
+REMOVE SERVICE
+--------------------------------------------
+# kubectl delete service nginx-deployment
+service "nginx-deployment" deleted
+
+# kubectl delete deployment nginx-deployment
+deployment.extensions "nginx" deleted
+
+[root@k00 pods]# kubectl get pods
+No resources found.
+[root@k00 pods]# kubectl get deployments
+No resources found.
+[root@k00 pods]# kubectl get svc
+NAME         TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+kubernetes   ClusterIP   10.96.0.1    <none>        443/TCP   19h
+
+--------------------------------------
+LOGON TO THE PODS AND CHECK NETWORK
+--------------------------------------
+- FIND IP ADDRESS OF PODS
+-- METHOD1 - GET INTO THE POD CONTAINER ITSELF
+On any node do this to get into the nginx pod/container:
+# docker exec -ti <container id> /bin/bash
+
+In the container:
+# ip addr list
+
+-- METHOD2 - describe the pod from master
+[root@k00 ~]# kubectl describe pods
+Name:               nginx-deployment-5c689d88bb-5w47h
+Namespace:          default
+Priority:           0
+PriorityClassName:  <none>
+Node:               k02/192.168.11.102
+Start Time:         Thu, 29 Nov 2018 10:48:59 +0530
+Labels:             app=nginx
+                    pod-template-hash=5c689d88bb
+Annotations:        <none>
+Status:             Running
+IP:                 192.168.2.3
+Controlled By:      ReplicaSet/nginx-deployment-5c689d88bb
+Containers:
+  nginx:
+    Container ID:   docker://00d5eeab91699a41576430475ac62a84179e32b3822089eebd6c03df49888a02
+    Image:          nginx:1.7.9
+    Image ID:       docker-pullable://nginx@sha256:e3456c851a152494c3e4ff5fcc26f240206abac0c9d794affb40e0714846c451
+    Port:           80/TCP
+    Host Port:      0/TCP
+    State:          Running
+      Started:      Thu, 29 Nov 2018 10:49:00 +0530
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-z8mrv (ro)
+Conditions:
+  Type              Status
+  Initialized       True 
+  Ready             True 
+  ContainersReady   True 
+  PodScheduled      True 
+Volumes:
+  default-token-z8mrv:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-z8mrv
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     node.kubernetes.io/not-ready:NoExecute for 300s
+                 node.kubernetes.io/unreachable:NoExecute for 300s
+Events:          <none>
+
+
+Name:               nginx-deployment-5c689d88bb-psj4h
+Namespace:          default
+Priority:           0
+PriorityClassName:  <none>
+Node:               k01/192.168.11.101
+Start Time:         Thu, 29 Nov 2018 10:48:59 +0530
+Labels:             app=nginx
+                    pod-template-hash=5c689d88bb
+Annotations:        <none>
+Status:             Running
+IP:                 192.168.1.4
+Controlled By:      ReplicaSet/nginx-deployment-5c689d88bb
+Containers:
+  nginx:
+    Container ID:   docker://a7571074ef0ec2711fca5773b3314c4bca3b79bf7fa33a60622fff3bd30b05dd
+    Image:          nginx:1.7.9
+    Image ID:       docker-pullable://nginx@sha256:e3456c851a152494c3e4ff5fcc26f240206abac0c9d794affb40e0714846c451
+    Port:           80/TCP
+    Host Port:      0/TCP
+    State:          Running
+      Started:      Mon, 03 Dec 2018 12:37:41 +0530
+    Last State:     Terminated
+      Reason:       Completed
+      Exit Code:    0
+      Started:      Thu, 29 Nov 2018 10:49:00 +0530
+      Finished:     Mon, 03 Dec 2018 12:37:40 +0530
+    Ready:          True
+    Restart Count:  1
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-z8mrv (ro)
+Conditions:
+  Type              Status
+  Initialized       True 
+  Ready             True 
+  ContainersReady   True 
+  PodScheduled      True 
+Volumes:
+  default-token-z8mrv:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-z8mrv
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     node.kubernetes.io/not-ready:NoExecute for 300s
+                 node.kubernetes.io/unreachable:NoExecute for 300s
+Events:
+  Type    Reason   Age                 From          Message
+  ----    ------   ----                ----          -------
+  Normal  Pulled   14m (x2 over 4d2h)  kubelet, k01  Container image "nginx:1.7.9" already present on machine
+  Normal  Created  14m (x2 over 4d2h)  kubelet, k01  Created container
+  Normal  Started  14m (x2 over 4d2h)  kubelet, k01  Started container
+
+--------------------------------------
+PINGING PODS and BETWEEN PODS
+--------------------------------------
+TBD: As of now pods across nodes could not ping each other.  That is because their IPs have different 3rd digit.
+https://stackoverflow.com/questions/51795575/pods-on-different-nodes-cant-ping-each-other
+--> This says Docker should be made to use flannel
+-->--> Refer docker/flannel integration doc for more details: http://docker-k8s-lab.readthedocs.io/en/latest/docker/docker-flannel.html#restart-docker-daemon-with-flannel-network
+(also see https://container-solutions.com/set-the-ip-of-the-docker-bridge-with-systemd/)
+
+From stackoverflow article:
+The docker virtual bridge interface docker0 is now have IP 172.17.0.1 on both host.
+But as per the docker/flannel integration guide, the docker0 virtual bridge should be in flannel network on each host.
+A highlevel workflow of flannel/docker networking integrations below
+
+Flannel creates /run/flannel/subnet.env as per the etcd network configuration during flanneld startup.
+Docker refers the file /run/flannel/subnet.env and set --bip flag during dockerd startup and assign IP 
+from flannel network to docker0
+
+Docker service is defined here:
+File: /usr/lib/systemd/system/docker.service
+(Link: /etc/systemd/system/multi-user.target.wants/docker.service)
+
+- ALETERIG DOCKER CONFIG TO USE FLANNEL
+https://docker-k8s-lab.readthedocs.io/en/latest/docker/docker-flannel.html#restart-docker-daemon-with-flannel-network
+
+FINAL METHOD
+
+Create a folder /etc/docker-flannel
+# mkdir /etc/docker-flannel
+
+When flannel and docker are running without any modification 
+# cp /run/flannel/subnet.env /etc/docker-flannel/flannel-subnet.env
+
+Modify /usr/lib/systemd/system/docker.service as follows:
+[Service]
+Type=notify
+# the default is not to use systemd for cgroups because the delegate issues still
+# exists and systemd currently does not support the cgroup feature set required
+# for containers run by docker
+# Added environment file
+EnvironmentFile=/etc/docker-flannel/flannel-subnet.env
+# Original ExecStart
+#ExecStart=/usr/bin/dockerd -H unix://
+# Hardcoded bip, mtu in ExecStart
+#ExecStart=/usr/bin/dockerd -H unix:// --bip=192.168.1.1/24 --mtu=1450
+# ExecStart with flannel environment variables
+ExecStart=/usr/bin/dockerd -H unix:// --bip=${FLANNEL_SUBNET} --mtu=${FLANNEL_MTU}
+ExecReload=/bin/kill -s HUP $MAINPID
+
+Restart docker
+# systemctl daemon-reload
+# service docker restart
+
+This should show docker0 using same subnet as flannel (see outputs in trials below)
+
+However, upon restart of node, though docker0 uses same subnet as flannel, it still disallows pings to pods.
+- To fix that
+Option1: Just bring down docker0 interface
+# ifconfig docker0 down
+(this will keep docker0 down, but cni0 still will be running and will now allow pod pings and connections)
+
+Option2: Restart docker after bringing down and removing docker0
+# ifconfig docker0 down
+# brctl delbr docker0
+# service docker restart
+(this will re-create docker0, and cni0 still will be running and docker0 & cni0 will now allow pod pings and connections)
+
+Verify using pings, curl and browser (see trials below)
+
+=====  VARIOUS TRIALS =====
+# ip addr list 
+7: docker0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default 
+    link/ether 02:42:ea:9d:41:e9 brd ff:ff:ff:ff:ff:ff
+    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0
+
+-- stop docker
+# service docker stop
+# docker ps
+Cannot connect to the Docker daemon. Is the docker daemon running on this host?
+
+-- know flannel environment
+Node1:
+# cat /run/flannel/subnet.env
+FLANNEL_NETWORK=10.244.0.0/16
+FLANNEL_SUBNET=192.168.1.1/24
+FLANNEL_MTU=1450
+FLANNEL_IPMASQ=true
+
+Node2:
+# cat /run/flannel/subnet.env
+FLANNEL_NETWORK=10.244.0.0/16
+FLANNEL_SUBNET=192.168.2.1/24
+FLANNEL_MTU=1450
+FLANNEL_IPMASQ=true
+
+-- source flannel environment
+# source /run/flannel/subnet.env
+or
+# . /run/flannel/subnet.env
+
+-- modify docker subnet
+# ifconfig docker0 ${FLANNEL_SUBNET}
+
+Node1:
+# ip addr list
+7: docker0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default 
+    link/ether 02:42:ea:9d:41:e9 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.1.1/24 brd 192.168.1.255 scope global docker0
+       valid_lft forever preferred_lft forever
+       
+Node2: 
+7: docker0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default 
+    link/ether 02:42:97:a0:c8:df brd ff:ff:ff:ff:ff:ff
+    inet 192.168.2.1/24 brd 192.168.2.255 scope global docker0
+       valid_lft forever preferred_lft forever
+
+-- start docker daemon / service
+
+---- manually
+# docker daemon --bip=${FLANNEL_SUBNET} --mtu=${FLANNEL_MTU} &
+
+---- OR, MODIFY docker.service file as follows:
+File: /usr/lib/systemd/system/docker.service
+
+--> MODIFY USING FLANNEL ENV FILE SOURCED IN docker.service
+[Service]
+Type=notify
+# the default is not to use systemd for cgroups because the delegate issues still
+# exists and systemd currently does not support the cgroup feature set required
+# for containers run by docker
+EnvironmentFile=/run/flannel/subnet.env
+#ExecStart=/usr/bin/dockerd -H unix://
+#ExecStart=/usr/bin/dockerd -H unix:// --bip=192.168.1.1/24 --mtu=1450
+ExecStart=/usr/bin/dockerd -H unix:// --bip=${FLANNEL_SUBNET} --mtu=${FLANNEL_MTU}
+ExecReload=/bin/kill -s HUP $MAINPID
+TimeoutSec=0
+RestartSec=2
+Restart=always
+
+--> (not preferred) - MODIFY USING HARDCODED VALUES
+Modified ExecStart line:
+Node1:
+ExecStart=/usr/bin/dockerd -H unix:// --bip=192.168.1.1/24 --mtu=1450
+
+Node2:
+ExecStart=/usr/bin/dockerd -H unix:// --bip=192.168.2.1/24 --mtu=1450
+
+# systemctl daemon-reload
+# service docker start
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+NOTE: After this we could ping pod IPs from their own nodes
+However, that did not work once machines were restarted and new pods were created (or old deployments deleted and recreated)
+To solve it: (on nodes)  
+  https://github.com/kubernetes/kubernetes/issues/7996
+  https://unix.stackexchange.com/questions/62751/cannot-delete-bridge-bridge-br0-is-still-up-cant-delete-it
+  
+  - Stop docker
+  #  service docker stop
+  
+  - Bring docker bridge interface
+  #  ifconfig docker0 down
+  
+  - Remove docker bridge
+  #  brctl delbr docker0
+  
+  - Restart docker
+  #  service docker start
+  
+  - This created the docker0 bridge afresh, with correct IP as in flannel subnet.env
+ 
+ TBD: However, upon node restart, this again failed and node-ip's could not be pinged
+ To fix: (on nodes)
+ While docker is running 
+  # ifconfig docker0 down  (just the interface - not docker itself)
+  # brctl delbr docker0
+  # systemctl daemon-reload
+  # service docker restart  (instead of service docker reload --> see note below)
+                              --> however, this will assign new IP to the pod
+  
+  NOTE: actually, it worked with service docker reload instead of service docker restart
+   [or, possibly without reload either]
+   when we did service docker reload - docker0 did not start, but the pod-ip ping and curl worked
+   So, docker0 may not be necessary
+   Also, instead of doing reload do restart of docker service - so that docker0 interface shows up
+
+  Then, pod-IP became pingable again.
+  So, probably, upon node restart we should re-create docker0 bridge
+  
+  https://www.slideshare.net/WorksApplications/demystifying-kubernetes
+  --> slide 19, 22, 48, 52, 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+-- VERIFY 
+This will show the new gateway and subnet
+# sudo docker network inspect bridge
+[
+    {
+        "Name": "bridge",
+        "Id": "51c1a2ff37395da99adae66e7dd21c7ea2eb7a37d7df27313cd3110099157de3",
+        "Created": "2018-12-03T20:26:22.674966809+05:30",
+        "Scope": "local",
+        "Driver": "bridge",
+        "EnableIPv6": false,
+        "IPAM": {
+            "Driver": "default",
+            "Options": null,
+            "Config": [
+                {
+                    "Subnet": "192.168.1.1/24",
+                    "Gateway": "192.168.1.1"
+                }
+            ]
+        },
+        "Internal": false,
+        "Attachable": false,
+        "Ingress": false,
+        "ConfigFrom": {
+            "Network": ""
+        },
+        "ConfigOnly": false,
+        "Containers": {},
+        "Options": {
+            "com.docker.network.bridge.default_bridge": "true",
+            "com.docker.network.bridge.enable_icc": "true",
+            "com.docker.network.bridge.enable_ip_masquerade": "true",
+            "com.docker.network.bridge.host_binding_ipv4": "0.0.0.0",
+            "com.docker.network.bridge.name": "docker0",
+            "com.docker.network.driver.mtu": "1450"
+        },
+        "Labels": {}
+    }
+]
+
+IP Addresses Node1: (after delbr etc)
+# ip addr list flannel.1
+8: flannel.1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UNKNOWN group default 
+    link/ether ca:51:da:83:06:9b brd ff:ff:ff:ff:ff:ff
+    inet 192.168.1.0/32 scope global flannel.1
+       valid_lft forever preferred_lft forever
+    inet6 fe80::c851:daff:fe83:69b/64 scope link 
+       valid_lft forever preferred_lft forever
+[root@k01 ~]# ip addr list cni0
+9: cni0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UP group default 
+    link/ether 0a:58:c0:a8:01:01 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.1.1/24 scope global cni0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::e03a:48ff:fe45:6df1/64 scope link 
+       valid_lft forever preferred_lft forever
+[root@k01 ~]# ip addr list docker0
+11: docker0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default 
+    link/ether 02:42:64:92:69:75 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.1.1/24 brd 192.168.1.255 scope global docker0
+       valid_lft forever preferred_lft forever
+
+IP Addresses Node2:  (after delbr etc)
+# ip addr list docker0
+11: docker0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default 
+    link/ether 02:42:37:32:f2:fd brd ff:ff:ff:ff:ff:ff
+    inet 192.168.2.1/24 brd 192.168.2.255 scope global docker0
+       valid_lft forever preferred_lft forever
+[root@k02 ~]# ip addr list cni0
+9: cni0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UP group default 
+    link/ether 0a:58:c0:a8:02:01 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.2.1/24 scope global cni0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::7012:98ff:fea7:50a6/64 scope link 
+       valid_lft forever preferred_lft forever
+[root@k02 ~]# ip addr list flannel.1
+8: flannel.1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UNKNOWN group default 
+    link/ether 96:d8:71:61:c4:02 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.2.0/32 scope global flannel.1
+       valid_lft forever preferred_lft forever
+    inet6 fe80::94d8:71ff:fe61:c402/64 scope link 
+       valid_lft forever preferred_lft forever
+
+
+-- VERIFY
+Now, from nodes you can ping the pod IPs (pod IPs are from kubectl get pods -o wide)
+(TBD - make the pods run from both nodes and then see whether they ping back and forth or not)
+
+-- VERIFY CONNECT TO NGINX USING POD IP
+# curl -I 192.168.1.8 80
+HTTP/1.1 200 OK
+Server: nginx/1.7.9
+Date: Mon, 03 Dec 2018 14:45:12 GMT
+Content-Type: text/html
+Content-Length: 612
+Last-Modified: Tue, 23 Dec 2014 16:25:09 GMT
+Connection: keep-alive
+ETag: "54999765-264"
+Accept-Ranges: bytes
+
+ALSO, try http://192.168.1.8:80 in a browser in the node --> you will get Nginx welcome page
+
+---- VERIFY CONNECT TO NGINX USING NODE IP
+# kubectl get service
+NAME            TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
+kubernetes      ClusterIP   10.96.0.1      <none>        443/TCP        5d22h
+nginx-service   NodePort    10.99.53.183   <none>        80:31945/TCP   5d3h
+
+# curl -I 192.168.11.102 31945
+--> This mostly wont work
+Try this:
+# curl http://192.168.11.102:31945
+- OR - 
+Try http://192.168.11.102:31945 in a browser on the machine
+
+===============================================
+HOSTNETWORK, HOSTPORT, NODEPORT, LOAD BALANCER
+===============================================
+http://alesnosek.com/blog/2017/02/14/accessing-kubernetes-pods-from-outside-of-the-cluster/
+
+Hostnetwork:  Same port on node as the container.  No service is created.
+HostPort: Can specify a different port on node for a container port.  No service is created.
+NodePort: Random or specifiable port on node for a container port. 
+          Additionally, it creates a 'service' - so we can use that 'service' as label for various things.
+
+------------
+HOSTNETWORK
+------------
+The hostNetwork setting applies to the Kubernetes pods. When a pod is configured with hostNetwork: true, 
+the applications running in such a pod can directly see the network interfaces of the host machine where the pod was
+started. An application that is configured to listen on all network interfaces will in turn be accessible on 
+all network interfaces of the host machine. 
+
+- Create yaml file:
+nginx-deployment-kubsite-hostNetwork.yml
+Keyword = Under 'spec' of the container, mention "hostNetwork: true"
+
+#apiVersion: apps/v1 # for versions before 1.9.0 use apps/v1beta2
+apiVersion: apps/v1beta2 # for versions before 1.9.0 use apps/v1beta2
+kind: Deployment
+metadata:
+  name: nginx-deployment
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+  replicas: 2 # tells deployment to run 2 pods matching the template
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      hostNetwork: true
+      containers:
+      - name: nginx
+        image: nginx:1.7.9
+        ports:
+        - containerPort: 80
+
+- Create the deployment
+kubectl create -f nginx-deployment-kubsite-hostNetwork.yml
+
+- List pods
+# kubectl get pods -o wide
+NAME                                READY   STATUS    RESTARTS   AGE   IP               NODE   NOMINATED NODE
+nginx-deployment-86d589546f-k4854   1/1     Running   0          41h   192.168.11.101   k01    <none>
+nginx-deployment-86d589546f-srqtp   1/1     Running   0          41h   192.168.11.102   k02    <none>
+
+Note: You can see pod-ip's same as nodes' own IPs
+
+- Access service
+NOTE: No service is created explicity and 'get service' also lists no service for this deployment
+NOTE: This works from outside of the node also - like, from other nodes or master
+NOTE: For this, host and pod port should be same. We cannot combine with HostPort directive
+
+# curl 192.168.11.101 80
+# curl 192.168.11.102 80
+
+These curl commands or accessing via browser as http://192.168.11.x:80 will give nginx page.
+
+- Discussion on advantages/disadvantages 
+(from http://alesnosek.com/blog/2017/02/14/accessing-kubernetes-pods-from-outside-of-the-cluster/)
+
+Disadvantage: (due to which this is not a preferred method)
+Note that every time the pod is restarted Kubernetes can reschedule the pod onto a different node and so the application 
+will change its IP address. Besides that two applications requiring the same port cannot run on the same node. 
+
+Advantage: (or where we still can use it beneficially)
+For cases where a direct access to the host networking is required - on standard port all across the cluster. 
+For example, the Kubernetes networking plugin Flannel can be deployed as a daemon set on all nodes of the Kubernetes cluster. Due to hostNetwork: true (in flannel deployment) Flannel has full control of the networking on every node 
+in the cluster allowing it to manage the overlay network to which the pods with hostNetwork: false are connected to.
+
+-----------------
+HOSTPORT
+-----------------
+
+- Create yaml file:
+nginx-deployment-kubsite-hostPort.yml
+
+# https://kubernetes.io/docs/tasks/run-application/run-stateless-application-deployment/
+#apiVersion: apps/v1 # for versions before 1.9.0 use apps/v1beta2
+apiVersion: apps/v1beta2 # for versions before 1.9.0 use apps/v1beta2
+kind: Deployment
+metadata:
+  name: nginx-deployment
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+  replicas: 2 # tells deployment to run 2 pods matching the template
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.7.9
+        ports:
+        - containerPort: 80
+          hostPort: 8080
+
+- Create deployment
+kubectl create -f nginx-deployment-kubsite-hostPort.yml
+
+- List pods
+# kubectl get pods -o wide
+NAME                                READY   STATUS    RESTARTS   AGE   IP             NODE   NOMINATED NODE
+nginx-deployment-76bbddbb68-6bk4x   1/1     Running   0          3s    192.168.2.22   k02    <none>
+nginx-deployment-76bbddbb68-vz887   1/1     Running   0          3s    192.168.1.29   k01    <none>
+
+- No services are created explicitly
+
+- Access the service
+NOTE: This is working from within the node only - not from master or other node
+
+<pod ip>:80
+or
+<host ip>:8080
+
+----------------
+NODEPORT
+----------------
+https://www.learnitguide.net/2018/08/create-kubernetes-yaml-for-deployment.html
+- CREATE AND EXPOSE (SEPARATE YML)
+
+-- CREATING
+# https://kubernetes.io/docs/tasks/run-application/run-stateless-application-deployment/
+#apiVersion: apps/v1 # for versions before 1.9.0 use apps/v1beta2
+apiVersion: apps/v1beta2 # for versions before 1.9.0 use apps/v1beta2
+kind: Deployment
+metadata:
+  name: nginx-deployment
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+  replicas: 4 # tells deployment to run 2 pods matching the template
+  template:
+    metadata: 
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.7.9
+        ports:
+        - containerPort: 80
+
+
+-- EXPOSING AFTER CREATING THE PODS/DEPLOYMENTS
+NOTE: The selector is by 'app' name given in creator yml
+kind: Service
+apiVersion: v1
+metadata:
+  name: nginx-service
+spec:
+  selector:
+    app: nginx
+  type: NodePort
+  ports:
+  - name: http
+    port: 80
+    nodePort: 30000
+    protocol: TCP
+    
+-- ACCESSING
+On the node or another node or master:  (accessible from all reachable machines, but using node's IP)
+curl -I http://192.168.11.101:30000
+
+- CREATE AND EXPOSE IN ONE YML
+For multiple item YML:
+https://stackoverflow.com/questions/33887194/how-to-set-multiple-commands-in-one-yaml-file-with-kubernetes
+
+# https://kubernetes.io/docs/tasks/run-application/run-stateless-application-deployment/
+#apiVersion: apps/v1 # for versions before 1.9.0 use apps/v1beta2
+apiVersion: apps/v1beta2 # for versions before 1.9.0 use apps/v1beta2
+kind: Deployment
+metadata:
+  name: nginx-deployment
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+  replicas: 4 # tells deployment to run 2 pods matching the template
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.7.9
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:  
+  name: nginx-service
+spec:
+  selector: 
+    app: nginx
+  type: NodePort
+  ports:  
+  - name: http
+    port: 80
+    nodePort: 30000
+    protocol: TCP
+
+===============
+HAPROXY
+===============
+- Create a haproxy setup (see haproxy-kb)
+
+- Setup frontend and backend for the NodePort (or port of hostport or hostNetwork)
+
+Edit /etc/haproxy/haproxy.cfg as needed.
+NOTE: Remove the initial comment lines, lines with "@" symbol etc
+NOTE: The ports of frontend and backend can be same or different - just does not matter
+
+# ADDED FOR KUBERNETES INGRESS
+frontend kub_nginx
+    bind *:30001
+    default_backend kub_nginx_backend
+
+backend kub_nginx_backend
+    balance     roundrobin
+    server  s1 192.168.11.101:30000 check
+    server  s2 192.168.11.102:30000 check
+    
+- Access using haproxy IP and frontend port
+http://<haproxy server IP>:30001
+--> This will redirect on round-robin fashion to one of the backend servers
+
+===============
+INGRESS
+===============
+https://medium.com/google-cloud/kubernetes-nodeport-vs-loadbalancer-vs-ingress-when-should-i-use-what-922f010849e0
+https://kubernetes.io/docs/concepts/services-networking/ingress/
+
+======================================
+APPENDIX - VARIOUS CHECKS
+======================================
+https://stackoverflow.com/questions/50527633/kubernetes-cluster-ip-unreachable
+
+# kubectl get ep
+# kubectl get endpoints
+
+# kubectl get svc
+# kubectl get pods 
+# kubectl get pods -o wide
+# kubectl get namespaces
+
+# kubectl get pods
+# kubectl get pods --all-namespaces
+
+# kubectl get deployments
+# kubectl get deployments --all-namespaces
+
+# kubectl exec my-nginx-3800858182-jr4a2 -- printenv | grep SERVICE
+
+
+Port forward commands:
+https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/#forward-a-local-port-to-a-port-on-the-pod

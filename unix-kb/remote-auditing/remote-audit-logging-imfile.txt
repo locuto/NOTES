@@ -1,0 +1,128 @@
+==================================================
+REMOTE AUDIT-LOGGING WITHOUT AGENTS LIKE AUDITBEAT
+==================================================
+
+-- FILTERING CAUTION
+It may not be good to filter when you are looking for both audit and rsyslog outputs to go to remote server.
+Filtering can be probably done when sending from that remote server to another remote server
+- OR - design the filtering so that you capture both required rsyslog and audit logs
+
+========================
+LOCAL MACHINE SETUP
+========================
+
+-----------------
+RSYSLOG.CONF
+-----------------
+# CUSTOMIZE - FOR AUDITD
+$ModLoad imfile
+# CUSTOMIZE - FOR AUDITD END
+
+# CUSTOMIZE - REMOTE LOGGING
+# Forward to a remote server (comment out if using config file in /etc/rsyslog.d)
+*.* @@192.168.0.210:514
+
+
+-- FILTERING (read caution mentioned before)
+NOTE: BE CAREFUL WHAT YOU FILTER - SO THAT YOU DONT END UP REMOVING WHAT YOU NEED
+      EXAMPLE - IF FILTER DOES NOT PASS USERADD/USERMOD ETC. THEN THOSE WONT GO TO REMOTE SERVER
+   
+# CUSTOMIZE - REMOTE LOGGING WITH FILTER
+# Forward to a remote server only filtered messages (comment out if using config file in /etc/rsyslog.d)
+#if ($programname == 'sshd' or $programname == 'rsyslogd' or $programname == 'systemd' or $programname == 'systemd-logind' or $programname == 'auditbeat' or $programname == 'auditd') and not ($syslogseverity == '7' or $msg contains_i 'debug') then @@192.168.0.210:514;RSYSLOG_ForwardFormat
+
+# CUSTOMIZE - FOR AUDITD
+# auditd audit.log
+$ModLoad imfile
+$InputFileName /var/log/audit/audit.log
+$InputFileTag tag_audit_log:
+$InputFileStateFile audit_log
+$InputFileSeverity info
+$InputFileFacility local6
+$InputRunFileMonitor
+# CUSTOMIZE - FOR AUDITD END
+
+-----------------
+AUDIT.RULES
+-----------------
+
+Add rules - just a few examples below:
+
+-w /usr/sbin/useradd -p x -k identity_audit
+-w /usr/sbin/usermod -p x -k identity_audit
+-w /usr/sbin/userdel -p x -k identity_audit
+
+
+=========================
+REMOTE SERVER
+=========================
+
+---------------------------
+REMOTE AUDIT.LOG DIRECTORY
+---------------------------
+In the local machine setup (for clients) we had set the following in rsyslog.conf
+$InputFileStateFile audit_log
+
+This will produce an audit log file on the remote machine 
+- IN ADDITION TO sending the messages to /var/log/messages of the remote machine
+
+For that, create this folder on the remote machine:
+/var/log/rsyslog/<hostname>
+
+-----------------
+RSYSLOG.CONF
+-----------------
+# CUSTOMIZE - TO RECEIVE LOGS FROM OTHER MACHINES
+# Commented out the lines below
+# Provides UDP syslog reception
+$ModLoad imudp
+$UDPServerRun 514
+
+# Provides TCP syslog reception
+$ModLoad imtcp
+$InputTCPServerRun 514
+# Commented out the lines above
+# CUSTOMIZE - TO RECEIVE LOGS FROM OTHER MACHINES - END
+
+# CUSTOMIZE - FOR AUDITD
+$template HostAudit, "/var/log/rsyslog/%HOSTNAME%/audit_log"
+local6.* ?HostAudit
+# CUSTOMIZE - FOR AUDITD END
+
+
+----------------------
+VERIFY
+----------------------
+
+OPERATION - useradd and userdel of user 'qqqq'
+
+- Local /var/log/audit/audit.log
+NOTE: The exact same lines appear in remote logs - just with added 'readable time', from-hostname and tag.
+-->   However, the time like "Oct  9 12:14:53" on the remote logs could be time on the remote machine, not of from-machine.
+
+type=EXECVE msg=audit(1539067492.031:645): argc=2 a0="useradd" a1="qqqq"
+type=ADD_GROUP msg=audit(1539067492.033:646): pid=21542 uid=0 auid=0 ses=4 msg='op=add-group acct="qqqq" exe="/usr/sbin/useradd" hostname=elk1 addr=? terminal=pts/0 res=success'
+type=EXECVE msg=audit(1539067494.712:649): argc=2 a0="userdel" a1="qqqq"
+type=DEL_GROUP msg=audit(1539067494.721:651): pid=21563 uid=0 auid=0 ses=4 msg='op=delete-group grp="qqqq" acct="qqqq" exe="/usr/sbin/userdel" hostname=elk1 addr=? terminal=pts/0 res=success'
+type=GRP_MGMT msg=audit(1539067494.721:652): pid=21563 uid=0 auid=0 ses=4 msg='op=delete-shadow-group grp="qqqq" acct="qqqq" exe="/usr/sbin/userdel" hostname=elk1 addr=? terminal=pts/0 res=success'
+
+- Remote /var/log/rsyslog/<hostname>/audit_log
+NOTE: Looks same content and format as in the remote /var/log/messages file
+
+Oct  9 12:14:53 elk1 tag_audit_log: type=EXECVE msg=audit(1539067492.031:645): argc=2 a0="useradd" a1="qqqq"
+Oct  9 12:14:53 elk1 tag_audit_log: type=ADD_GROUP msg=audit(1539067492.033:646): pid=21542 uid=0 auid=0 ses=4 msg='op=add-group acct="qqqq" exe="/usr/sbin/useradd" hostname=elk1 addr=? terminal=pts/0 res=success'
+Oct  9 12:15:03 elk1 tag_audit_log: type=EXECVE msg=audit(1539067494.712:649): argc=2 a0="userdel" a1="qqqq"
+Oct  9 12:15:03 elk1 tag_audit_log: type=DEL_GROUP msg=audit(1539067494.721:651): pid=21563 uid=0 auid=0 ses=4 msg='op=delete-group grp="qqqq" acct="qqqq" exe="/usr/sbin/userdel" hostname=elk1 addr=? terminal=pts/0 res=success'
+Oct  9 12:15:03 elk1 tag_audit_log: type=GRP_MGMT msg=audit(1539067494.721:652): pid=21563 uid=0 auid=0 ses=4 msg='op=delete-shadow-group grp="qqqq" acct="qqqq" exe="/usr/sbin/userdel" hostname=elk1 addr=? terminal=pts/0 res=success'
+
+- Remote /var/log/messages
+NOTE: Looks same content and format as in the remote audit_log file
+
+Oct  9 12:14:53 elk1 tag_audit_log: type=EXECVE msg=audit(1539067492.031:645): argc=2 a0="useradd" a1="qqqq"
+Oct  9 12:14:53 elk1 tag_audit_log: type=ADD_GROUP msg=audit(1539067492.033:646): pid=21542 uid=0 auid=0 ses=4 msg='op=add-group acct="qqqq" exe="/usr/sbin/useradd" hostname=elk1 addr=? terminal=pts/0 res=success'
+Oct  9 12:15:03 elk1 tag_audit_log: type=EXECVE msg=audit(1539067494.712:649): argc=2 a0="userdel" a1="qqqq"
+Oct  9 12:15:03 elk1 tag_audit_log: type=DEL_GROUP msg=audit(1539067494.721:651): pid=21563 uid=0 auid=0 ses=4 msg='op=delete-group grp="qqqq" acct="qqqq" exe="/usr/sbin/userdel" hostname=elk1 addr=? terminal=pts/0 res=success'
+Oct  9 12:15:03 elk1 tag_audit_log: type=GRP_MGMT msg=audit(1539067494.721:652): pid=21563 uid=0 auid=0 ses=4 msg='op=delete-shadow-group grp="qqqq" acct="qqqq" exe="/usr/sbin/userdel" hostname=elk1 addr=? terminal=pts/0 res=success'
+
+
+

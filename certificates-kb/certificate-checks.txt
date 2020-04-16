@@ -1,0 +1,47 @@
+========================
+CHECK FOR WHOLE CONTENT
+========================
+
+https://stackoverflow.com/questions/9758238/how-to-view-the-contents-of-a-pem-certificate
+
+keytool -printcert -file certificate.pem
+openssl x509 -in certificate.pem -text
+
+=====================
+CHECK FOR EXPIRY DATE
+=====================
+
+---------------
+CHECK A SITE
+---------------
+-- Wildcard
+echo|openssl s_client -connect *.mysite.mycompany.com:443 | openssl x509 -noout -dates
+
+-- Exact
+echo|openssl s_client -connect myapp.mysite.mycompany.com:443 | openssl x509 -noout -dates
+echo | openssl s_client -connect myapp.mysite.mycompany.com:443 -servername myapp.mysite.mycompany.com| openssl x509 -noout -dates
+ 
+
+Output will be like:
+notBefore=Apr 18 19:52:57 2019 GMT
+notAfter=Apr 17 19:52:57 2020 GMT
+
+-----------------
+CHECK A PEM FILE
+-----------------
+https://stackoverflow.com/questions/21297853/how-to-determine-ssl-cert-expiration-date-from-a-pem-encoded-certificate
+
+openssl x509 -enddate -noout -in file.pem
+
+Output will be like: 
+notAfter=Nov  3 22:23:50 2014 GMT
+
+====== No idea what these are:
+echo|openssl s_client -connect wildcard.test.abc-prod.kubernetes.company.com:443 | openssl x509 -noout -text|grep -F "Not "
+echo|openssl s_client -connect prometheus-server.test.abc-prod.kubernetes.company.com:443 | openssl x509 -noout -text|grep -F "Not "
+
+This may show errors like:
+verify error:num=20:unable to get local issuer certificate
+verify error:num=21:unable to verify the first certificate
+
+Or, show that everything is fine:

@@ -1,0 +1,87 @@
+==============================
+ETCD COMMANDS
+==============================
+HINT: pipe to 'jq' to get better looking json outputs
+
+https://coreos.com/etcd/docs/latest/v2/admin_guide.html
+https://github.com/etcd-io/etcd/blob/master/Documentation/v2/api.md
+https://coreos.com/etcd/docs/latest/v2/members_api.html
+
+From https://github.com/etcd-io/etcd/blob/master/Documentation/v2/api.md
+- curl http://127.0.0.1:2379/v2/stats/self
+- curl http://127.0.0.1:2379/v2/stats/leader
+- curl http://127.0.0.1:2379/v2/stats/store
+
+==============================
+LEADER
+==============================
+curl http://127.0.0.1:2379/v2/stats/leader 
+
+==============================
+HEALTH CHECK
+==============================
+https://coreos.com/etcd/docs/latest/v2/admin_guide.html
+
+- Using curl
+# curl -L http://127.0.0.1:2379/health
+{"health": "true"}
+
+Also, you can use individual node IP instead of 127.0.0.1
+--> do that for each node to know health of each member
+
+- Using etcdctl
+
+-- cluster health
+# etcdctl cluster-health
+member 3155d2fb633d686a is healthy: got healthy result from http://120.158.240.249:2379
+member 31acc000db8fea90 is healthy: got healthy result from http://120.158.240.247:2379
+member f042dd7292edb971 is healthy: got healthy result from http://120.158.240.248:2379
+cluster is healthy
+
+-- Find the location of etcdctl
+# find . -name etcdctl -print
+./var/lib/docker/overlay2/35fd4e8c03eaece8ec9ed9722034352fe3c5d58ac3dd65b83d9/diff/usr/local/bin/etcdctl
+./var/lib/docker/overlay2/731698e3476ca0f10949a16d552dd7dffcbb95ea9badc3fbdafe28/merged/usr/local/bin/etcdctl
+./k8sdata/docker/overlay2/35fd4e8c1b6196f10128ec9ed9722034352fe3c5d58ac3dd65b83d9/diff/usr/local/bin/etcdctl
+./k8sdata/docker/overlay2/731698e3476ca0f106e3b89ef5e949a1fcbb95ea9badc3fbdafe28/merged/usr/local/bin/etcdctl
+
+-- Run etcdctl
+# ./var/lib/docker/overlay2/731698e5ea9badc3fbdafe28/merged/usr/local/bin/etcdctl cluster-health
+member 3155d2fb633d686a is healthy: got healthy result from http://110.138.240.149:2379
+member 31acc000db8fea90 is healthy: got healthy result from http://110.138.240.147:2379
+member f042dd7292edb971 is healthy: got healthy result from http://110.138.240.148:2379
+cluster is healthy
+
+==============================
+LIST MEMBERS
+==============================
+https://github.com/etcd-io/etcd/blob/master/Documentation/v2/members_api.md
+- list, add, delete
+
+https://coreos.com/etcd/docs/latest/v2/members_api.html
+
+curl http://10.0.0.10:2379/v2/members
+{
+    "members": [
+        {
+            "id": "272e204152",
+            "name": "infra1",
+            "peerURLs": [
+                "http://10.0.0.10:2380"
+            ],
+            "clientURLs": [
+                "http://10.0.0.10:2379"
+            ]
+        },
+        {
+            "id": "2225373f43",
+            "name": "infra2",
+            "peerURLs": [
+                "http://10.0.0.11:2380"
+            ],
+            "clientURLs": [
+                "http://10.0.0.11:2379"
+            ]
+        },
+    ]
+}

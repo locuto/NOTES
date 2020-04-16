@@ -1,0 +1,589 @@
+==============================
+INSTALL NOT WITH KUBEADM INIT
+==============================
+
+----------------------------------------------------------------------
+NOTE: THIS IS NOW BEING DONE UNDER WIP-install-as-pods-separately.txt
+-- DONT DELETE THIS FILE - THIS IS A REFERENCE OR TBD AGAIN LATER
+
+Reference: WIP-install-baremetal-seprate-vms.txt
+
+----------------------------------------------------------------------
+
+
+Use this: https://medium.com/containerum/4-ways-to-bootstrap-a-kubernetes-cluster-de0d5150a1e4
+(multiple methods - binaries, docker images, kubeadm)
+
+https://blog.inkubate.io/deploy-kubernetes-1-9-from-scratch-on-vmware-vsphere/
+And, to set up like in companies: (this still uses binaries - not docker containers for components)
+
+With docker images:
+ETCD with docker images - https://coreos.com/etcd/docs/latest/v2/docker_guide.html
+
+For repo setup and some stuff (this uses kubeadm init):
+https://www.itzgeek.com/how-tos/linux/centos-how-tos/how-to-install-kubernetes-on-centos-7-ubuntu-18-04-16-04-debian-9.html
+
+
+============================
+HOW IT WORKS
+============================
+NOTE: Here we are NOT discussing how to make it multi-node etcd and multi-master cluster
+
+Set up ETCD - docker image and etcd service
+Configure core manifests and addon configurations as given below
+Run bootstrap script or service, which wll:
+  Start etcd
+  Start kubelet (it starts kubelet and also creates apiserver, controller manager and scheduler pods)
+  Start addons (kubectl apply)
+
+rootfs/etc/systemd/system/etcd.service
+--> calls /opt/k8s/start-etcd.sh
+
+/etc/systemd/system/k8s-bootstrap.service
+--> calls /opt/k8s/k8s-bootstrap.sh
+
+During machine start, the bootstrap script called via the service: 
+/opt/k8s/k8s-bootstrap.sh
+--> Starts kubelet (which starts apiserver and such)
+  /etc/kubernetes/manifests  --> CORE MANIFESTS
+    kube-apiserver.json
+    kube-controller-manager.json
+    kube-scheduler.json
+--> Starts addons
+  /etc/kubernetes/addons/  --> ADDONS
+    flannel.yml (or calico)
+    kube-dns.yml
+    kube-proxy.yml
+    nginx-ingress-controller.yml
+    stores-umtrx-agent.yml
+
+============================================================
+PREPARE MODEL VM - TO CLONE INTO MASTER, ETCD, WORKER VMs
+============================================================
+
+----------------
+SYSTEM SETTINGS
+----------------
+
+hostname.sh:
+hostnamectl set-hostname oel7k8smodel
+
+firewall-master.sh: (in my case, firewall was not enabled, but this is for if firewall is enabled)
+firewall-cmd --permanent --add-port=6443/tcp
+firewall-cmd --permanent --add-port=2379-2380/tcp
+firewall-cmd --permanent --add-port=10250/tcp
+firewall-cmd --permanent --add-port=10251/tcp
+firewall-cmd --permanent --add-port=10252/tcp
+firewall-cmd --permanent --add-port=10255/tcp
+firewall-cmd --reload
+
+firewall-worker.sh: (in my case, firewall was not enabled, but this is for if firewall is enabled)
+firewall-cmd --permanent --add-port=10251/tcp
+firewall-cmd --permanent --add-port=10255/tcp
+firewall-cmd --reload
+
+selinux.sh:
+setenforce 0
+sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/selinux/config
+
+kernel.sh:
+modprobe br_netfilter
+echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
+echo '1' > /proc/sys/net/bridge/bridge-nf-call-ip6tables
+
+cat <<EOF > /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-iptables = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+EOF
+sysctl -p
+
+swap settings:
+1. swapoff -a
+2. Edit /etc/fstab and comment out line of swap
+--> like #/dev/mapper/ol-swap     swap                    swap    defaults        0 0
+
+docker Prerequisites:
+yum install -y yum-utils device-mapper-persistent-data lvm2
+
+docker repo:
+yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+
+container-selinux for docker: 
+Note: Do a yum install so that it installs dependencies also
+Note: Go to http://mirror.centos.org/centos/7/extras/x86_64/Packages/ and find the latest version
+
+yum install http://mirror.centos.org/centos/7/extras/x86_64/Packages/container-selinux-2.74-1.el7.noarch.rpm
+
+Now, Restart the VM so that the new hostname gets set properly
+
+--------------
+INSTALL DOCKER
+--------------
+
+### Install Docker from CentOS/RHEL repository ###
+
+yum install -y docker
+systemctl enable docker 
+systemctl start docker
+
+OR
+
+### Install Docker CE 18.06 from Docker's CentOS repositories ###
+
+# Install Prerequisites (done in the previous steps mostly)
+    yum install -y yum-utils device-mapper-persistent-data lvm2
+
+    # Add Docker repository 
+    yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+
+# Install Docker
+Optional - yum update
+
+yum install -y docker-ce
+- OR -
+yum install -y docker-ce-18.06.1.ce
+
+# Create Docker Directory 
+mkdir /etc/docker
+
+OPTIONAL - # Setup Docker Daemon
+cat > /etc/docker/daemon.json <<EOF
+{
+
+"exec-opts": ["native.cgroupdriver=systemd"], 
+--> THIS, BY DEFAULT IS CGROUPFS I think, should this be changed - dont set this - https://stackoverflow.com/questions/45708175/kubelet-failed-with-kubelet-cgroup-driver-cgroupfs-is-different-from-docker-c
+
+"log-driver": "json-file",
+"log-opts": {
+"max-size": "100m"
+},
+"storage-driver": "overlay2",
+"storage-opts": [
+"overlay2.override_kernel_check=true"
+]
+}
+EOF
+
+OPTIONAL - mkdir -p /etc/systemd/system/docker.service.d
+--> If not set, it may default to /usr/lib/systemd/system --> and docker.service gets created there
+
+# Restart Docker Daemon
+systemctl daemon-reload
+systemctl restart docker
+systemctl enable docker
+
+- VERIFY
+
+[root@oel7k8smodel ~]# docker pull busybox
+Using default tag: latest
+latest: Pulling from library/busybox
+fc1a6b909f82: Pull complete 
+Digest: sha256:954e1f01e80ce09d0887ff6ea10b13a812cb01932a0781d6b0cc23f743a874fd
+Status: Downloaded newer image for busybox:latest
+[root@oel7k8smodel ~]# docker images
+REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+busybox             latest              af2f74c517aa        2 weeks ago         1.2MB
+
+-------------------------
+KUBERNETES PREP WORK
+-------------------------
+
+- ADD KUBERNETES YUM REPO
+
+cat <<EOF > /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+exclude=kube*
+EOF
+
+- INSTALL KUBECTL
+yum install -y kubectl --disableexcludes=kubernetes
+
+yum install -y kubelet --disableexcludes=kubernetes
+
+yum install -y kubeadm --disableexcludes=kubernetes
+
+- KUBEADM AND KUBELET --> INSTALL THEM ANYWAY
+---> BUT, DO NOT ENABLE KUBELET SERVICE ON THE MODEL MACHINE
+
+========
+==== NOW, THE MODEL MACHINE IS READY
+==== YOU CAN CLONE THIS AND INSTALL KUBEADM AND KUBELET AND INITIALIZE A CLUSTER - OR USE BARE-METAL INSTALL TYPE OF INSTALL
+========
+
+
+=========
+MASTER
+=========
+
+THESE ARE THE IMAGES NEEDED
+
+REPOSITORY                                                            TAG                 IMAGE ID            CREATED             SIZE
+docker.x.com/kubernetes/namespace-token-distributer-controller   1.4.4               cf86f24fc729        40 hours ago        468MB
+gcr.io/google_containers/kube-proxy-amd64                             v1.12.6             211cc719d4d6        7 weeks ago         96.5MB
+gcr.io/google_containers/kube-controller-manager-amd64                v1.12.6             473237e54d99        7 weeks ago         164MB
+gcr.io/google_containers/kube-apiserver-amd64                         v1.12.6             97d5a4fe6d07        7 weeks ago         194MB
+gcr.io/google_containers/kube-scheduler-amd64                         v1.12.6             f6116fc392fd        7 weeks ago         58.4MB
+quay.io/calico/node                                                   v3.4.0              a89b45f36d5e        4 months ago        75.9MB
+quay.io/calico/cni                                                    v3.4.0              d531d047a4e2        4 months ago        75.4MB
+gcr.io/google-containers/kube-addon-manager-amd64                     v8.9                13da3ecfc10d        5 months ago        99.2MB
+k8s.gcr.io/pause                                                      3.1                 da86e6ba6ca1        16 months ago       742kB
+
+==============================
+START INSTALLS
+==============================
+https://blog.inkubate.io/deploy-kubernetes-1-9-from-scratch-on-vmware-vsphere/
+--> This does direct software installs - we will use those directions, but, we will use docker containers
+
+IP address plan (from the site above):
+    For this lab, we will use a standard Ubuntu 16.04 installation as a base image for the seven virtual machines needed. 
+    The virtual machines will all be configured on the same virtual network 10.10.40.0/24 and this network needs to have 
+    access to the Internet.
+
+    The first machine needed is the machine on which the HAProxy load balancer will be installed. 
+    We will assign the IP 10.10.40.63 to this machine.
+
+    We also need three Kubernetes master nodes. 
+    These virtual machines will have the IPs 10.10.40.60, 10.10.40.61, and 10.10.40.62.
+
+    Finally, we will also have three Kubernetes worker nodes 
+    with the IPs 10.10.40.70, 10.10.40.71, and 10.10.40.72.
+
+    We also need an IP range for the pods. 
+    This range will be 10.20.0.0/16, but it is only internal to Kubernetes 
+    and doesn't need to be configured on VMware vSphere.
+
+IP ADDRESS PLAN:
+HAProxy - 192.168.40.63
+Master+ETCD - 192.168.40.60, 192.168.40.61, 192.168.40.62
+Workers - 192.168.40.70, 192.168.40.71, 192.168.40.72
+Pod IP Range - 10.20.0.0/16
+
+==============================
+HAPROXY
+==============================
+https://docs.docker.com/samples/library/haproxy/
+
+# docker pull haproxy:1.9
+# docker images
+REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+busybox             latest              af2f74c517aa        2 weeks ago         1.2MB
+haproxy             1.9                 f3abd21f393a        2 weeks ago         72.1MB
+
+- Create the config folder for haproxy (this will be mounted to the docker container later)
+# mkdir /etc/haproxy-docker
+
+- Create the config file
+Also reference: http://oskarhane.com/haproxy-as-a-static-reverse-proxy-for-docker-containers/
+
+# vi /etc/haproxy-docker/haproxy.cfg
+
+global
+    daemon
+    maxconn 4096
+
+defaults
+    mode http
+    timeout connect 5000ms
+    timeout client 50000ms
+    timeout server 50000ms
+    
+frontend kubernetes
+    #bind        192.168.40.63:6443 --> DONT USE IP OF THE HOST - AS IN THE DOCUMENT - AS CONTAINER IP WILL BE DIFFERENT
+    bind        *:6443
+    option      tcplog
+    mode        tcp
+    default_backend kubernetes-master-nodes
+
+backend kubernetes-master-nodes
+    mode    tcp
+    balance roundrobin
+    option  tcp-check
+    server  k8s-master-0 192.168.40.60:6443 check fall 3 rise 2
+    server  k8s-master-1 192.168.40.61:6443 check fall 3 rise 2
+    server  k8s-master-2 192.168.40.62:6443 check fall 3 rise 2
+    
+- Verify the config file
+https://docs.docker.com/samples/library/haproxy/
+
+# docker run -it --name k8s-haproxy-temp -v /etc/haproxy-docker:/usr/local/etc/haproxy:ro -v /run/haproxy-docker:/run/haproxy:rw haproxy:1.9 -c -f /usr/local/etc/haproxy/haproxy.cfg
+
+[WARNING] 108/122716 (1) : config : log format ignored for frontend 'kubernetes' since it has no log address.
+Configuration file is valid
+
+- Start the haproxy container
+https://docs.docker.com/samples/library/haproxy/
+
+Syntax (BASIC):
+$ docker run -d --name k8s-haproxy -v /path/to/etc/haproxy:/usr/local/etc/haproxy:ro haproxy:1.9
+
+Actual:
+# docker run -d --name k8s-haproxy -v /etc/haproxy-docker:/usr/local/etc/haproxy:ro -v /run/haproxy-docker:/run/haproxy:rw haproxy:1.9
+
+-- with docker socket also shared with container
+# docker run -d --name k8s-haproxy -p 6443:6443 -v /var/run/docker.sock:/var/run/docker.sock -v /etc/haproxy-docker:/usr/local/etc/haproxy:ro -v /run/haproxy-docker:/run/haproxy haproxy:1.9
+
+- Verify
+# netstat -anp |grep haproxy
+--> This will not return any value as the process is inside container
+
+- Verify host port (mapped port - in this case same as container port)
+# netstat -anp|grep 6443
+tcp6       0      0 :::6443                 :::*                    LISTEN      16921/docker-proxy  
+
+- Stop the container and see
+# docker stop 7caa120cf967
+7caa120cf967
+# docker rm 7caa120cf967
+7caa120cf967
+# netstat -anp|grep 6443
+--> nothing shows now 
+
+==================================================
+GENERATE CERTIFICATES 
+==================================================
+(maybe, do this in model itself and keep ready)
+https://blog.inkubate.io/deploy-kubernetes-1-9-from-scratch-on-vmware-vsphere/
+
+--------------------------------
+Create a certificate authority
+--------------------------------
+1- Create the certificate authority configuration file (CA)
+
+$ vim ca-config.json
+{
+  "signing": {
+    "default": {
+      "expiry": "87600h"
+    },
+    "profiles": {
+      "kubernetes": {
+        "usages": ["signing", "key encipherment", "server auth", "client auth"],
+        "expiry": "87600h"
+      }
+    }
+  }
+}
+
+2- Create the certificate authority signing request configuration file (CSR)
+NOTE: Make all attributes ABC for convenience for lab
+
+$ vim ca-csr.json
+{
+  "CN": "Kubernetes",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "ABC",
+      "L": "ABC",
+      "O": "Kubernetes",
+      "OU": "Kubernetes",
+      "ST": "ABC"
+    }
+  ]
+}
+
+3- Generate the certificate authority certificate and private key.
+
+$ cfssl gencert -initca ca-csr.json | cfssljson -bare ca
+
+4- Verify that the ca-key.pem and the ca.pem were generated. (also ca.csr)
+
+$ ls -la *pem
+-rw------- 1 root root 1675 Apr 21 09:52 ca-key.pem
+-rw-r--r-- 1 root root 1350 Apr 21 09:52 ca.pem
+
+--------------------------------------
+Generate the Kubernetes certificates
+--------------------------------------
+Each Kubernetes component will need a client and a server certificate to communicate over TLS. 
+We will generate all these certificates in this section.
+
+------------------------
+Admin client certificate
+------------------------
+This certificate will be used to connect to the Kubernetes cluster as an administrator.
+
+1- Create the certificate signing request configuration file.
+
+$ vim admin-csr.json
+{
+  "CN": "admin",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "ABC",
+      "L": "ABC",
+      "O": "system:masters",
+      "OU": "Kubernetes",
+      "ST": "ABC"
+    }
+  ]
+}
+
+2- Generate the certificate and the private key.
+
+$ cfssl gencert \
+-ca=ca.pem \
+-ca-key=ca-key.pem \
+-config=ca-config.json \
+-profile=kubernetes admin-csr.json | \
+cfssljson -bare admin
+
+You may get this error - which is ok:
+2019/04/21 12:11:07 [WARNING] This certificate lacks a "hosts" field. This makes it unsuitable for
+websites. For more information see the Baseline Requirements for the Issuance and Management
+of Publicly-Trusted Certificates, v.1.1.6, from the CA/Browser Forum (https://cabforum.org);
+specifically, section 10.2.3 ("Information Requirements").
+
+3- Verify that the admin-key.pem and the admin.pem were generated. (also admin.csr)
+
+$ ls -la admin*
+
+------------------------------------------------
+Generate the Kubelet client certificates
+------------------------------------------------
+For worker nodes - to join cluster
+
+1- Create a certificate signing request configuration file for the 10.10.40.70 worker node.
+
+$ vim 10.10.40.70-csr.json
+{
+  "CN": "system:node:10.10.40.70",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "ABC",
+      "L": "ABC",
+      "O": "system:nodes",
+      "OU": "Kubernetes",
+      "ST": "ABC."
+    }
+  ]
+}
+2- Generate the certificate and the private key.
+
+$ cfssl gencert \
+-ca=ca.pem \
+-ca-key=ca-key.pem \
+-config=ca-config.json \
+-hostname=10.10.40.70,10.10.40.70 \
+-profile=kubernetes 10.10.40.70-csr.json | \
+cfssljson -bare 10.10.40.70
+
+3- Create a certificate signing request configuration file for the 10.10.40.71 worker node.
+
+$ vim 10.10.40.71-csr.json
+{
+  "CN": "system:node:10.10.40.71",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "ABC",
+      "L": "ABC",
+      "O": "system:nodes",
+      "OU": "Kubernetes",
+      "ST": "ABC."
+    }
+  ]
+}
+4- Generate the certificate and the private key.
+
+$ cfssl gencert \
+-ca=ca.pem \
+-ca-key=ca-key.pem \
+-config=ca-config.json \
+-hostname=10.10.40.71,10.10.40.71 \
+-profile=kubernetes 10.10.40.71-csr.json | \
+cfssljson -bare 10.10.40.71
+
+5- Create a certificate signing request configuration file for the 10.10.40.72 worker node.
+
+$ vim 10.10.40.72-csr.json
+{
+  "CN": "system:node:10.10.40.72",
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "ABC",
+      "L": "ABC",
+      "O": "system:nodes",
+      "OU": "Kubernetes",
+      "ST": "ABC."
+    }
+  ]
+}
+
+6- Generate the certificate and the private key.
+
+$ cfssl gencert \
+-ca=ca.pem \
+-ca-key=ca-key.pem \
+-config=ca-config.json \
+-hostname=10.10.40.72,10.10.40.72 \
+-profile=kubernetes 10.10.40.72-csr.json | \
+cfssljson -bare 10.10.40.72
+
+==================================================
+APPENDIX
+==================================================
+
+------------------------
+HAPROXY CONFIG FILE
+------------------------
+http://oskarhane.com/haproxy-as-a-static-reverse-proxy-for-docker-containers/
+//Put this in the file
+global
+    daemon
+    maxconn 4096
+
+defaults
+    mode http
+    timeout connect 5000ms
+    timeout client 50000ms
+    timeout server 50000ms
+
+frontend http-in
+    bind *:80
+    acl is_site1 hdr_end(host) -i domain1.se
+    acl is_site2 hdr_end(host) -i domain2.com
+
+    use_backend site1 if is_site1
+    use_backend site2 if is_site2
+
+backend site1
+    balance roundrobin
+    option httpclose
+    option forwardfor
+    server s2 127.0.0.1:49153 maxconn 32
+
+backend site2
+    balance roundrobin
+    option httpclose
+    option forwardfor
+    server s1 127.0.0.1:2082 maxconn 32
+
+listen admin
+    bind 127.0.0.1:8080
+    stats enable
+

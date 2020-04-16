@@ -1,0 +1,38 @@
+Packer templates:
+https://github.com/chef/bento/tree/master/packer_templates/centos
+https://github.com/alerta/packer-templates
+- https://github.com/alerta/packer-templates/tree/master/scripts
+
+Tutorial
+https://medium.com/@mightywomble/packer-introduction-to-packer-3a694da71d96
+https://medium.com/sumup-engineering/image-creation-and-testing-with-hashicorp-packer-and-serverspec-bb2bd065441
+https://docs.joyent.com/public-cloud/api/hashicorp/packer
+https://labs.tadigital.com/index.php/2019/03/08/continuous-deployment-in-multiple-environments-using-packer/ 
+- for aws, azure 
+
+Tutorial - vagrant, virtualbox
+https://blog.codeship.com/packer-vagrant-tutorial/
+https://codeblog.dotsandbrackets.com/build-image-packer/ --> good one
+
+Official docs:
+https://www.packer.io/docs/builders/qemu.html
+https://www.packer.io/docs/builders/openstack.html
+
+Various templates:
+https://www.packer.io/docs/builders/qemu.html (qemu)
+- https://www.packer.io/community-tools.html#templates (various)
+  - https://github.com/tylert/packer-build 
+
+Kickstart:
+https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/installation_guide/sect-kickstart-syntax
+
+ISSUEs:
+QEMU build failed due to "qemu: Timeout waiting for SSH" error, similar to #3910 with more details
+- https://github.com/hashicorp/packer/issues/3935
+
+=====
+KVM
+=====
+https://www.tecmint.com/install-and-configure-kvm-in-linux/
+
+

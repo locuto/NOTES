@@ -1,0 +1,543 @@
+=============
+CALICO FOR K8
+=============
+
+NOTE - the ERROR may be becasue the pod-network CIDR and IP range used by VMs both were 192.168.0.0
+--> Redoing everything from scratch - see the newer calico notes file
+
+Main doc: https://docs.projectcalico.org/v3.4/getting-started/kubernetes/
+https://kubernetes.io/docs/tasks/administer-cluster/network-policy-provider/calico-network-policy/#creating-a-local-calico-cluster-with-kubeadm
+Then, https://docs.projectcalico.org/v3.4/getting-started/kubernetes/tutorials/simple-policy
+
+For prod:
+https://docs.projectcalico.org/v3.4/getting-started/kubernetes/installation/
+
+Issues:
+Calico-node keeps crashing:
+https://github.com/projectcalico/calico/issues/1806 --> mine
+https://success.docker.com/article/fix-ucp-calico-for-rp-filter
+    --> This seemed to work
+    On host: in /etc/sysctl.conf set the rp_filter to 1 instead of 2
+    and then do "sysctl -p"
+    
+    # oracle-database-server-12cR2-preinstall setting for net.ipv4.conf.all.rp_filter is 2
+    #net.ipv4.conf.all.rp_filter = 2
+    net.ipv4.conf.all.rp_filter = 1
+
+    # oracle-database-server-12cR2-preinstall setting for net.ipv4.conf.default.rp_filter is 2
+    #net.ipv4.conf.default.rp_filter = 2
+    net.ipv4.conf.default.rp_filter = 1
+
+Issue:
+join node uses nat interface of node - need to make it use correct interface
+https://docs.projectcalico.org/v3.4/usage/configuration/node
+https://github.com/kubernetes/kubernetes/issues/33618
+
+=======================================
+Quickstart for Calico on Kubernetes
+=======================================
+https://docs.projectcalico.org/v3.4/getting-started/kubernetes/
+
+Overview
+This quickstart gets you a single-host Kubernetes cluster with Calico in approximately 15 minutes. You can use this cluster for testing and development.
+
+To deploy a cluster suitable for production, refer to Installation.
+
+Requirements
+AMD64 processor
+2CPU
+2GB RAM
+10GB free disk space
+RedHat Enterprise Linux 7.x+, CentOS 7.x+, Ubuntu 16.04+, or Debian 9.x+
+Before you begin
+Ensure that Calico can manage cali and tunl interfaces on the host. If NetworkManager is present on the host, refer to Configure NetworkManager.
+
+Follow the Kubernetes instructions to install kubeadm.
+
+Note: After installing kubeadm, do not power down or restart the host. Instead, continue directly to the next section to create your cluster.
+
+Create a single-host Kubernetes cluster
+As a regular user with sudo privileges, open a terminal on the host that you installed kubeadm on.
+
+Initialize the master using the following command.
+
+sudo kubeadm init --pod-network-cidr=192.168.0.0/16
+Note: If 192.168.0.0/16 is already in use within your network you must select a different pod network CIDR, replacing 192.168.0.0/16 in the above command as well as in any manifests applied below.
+
+Execute the following commands to configure kubectl (also returned by kubeadm init).
+
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+Install an etcd instance with the following command.
+--> NOTE: This is NOT the kubernetes' own etcd - this is an etcd for calico (see it installs as calico-etcd)
+
+kubectl apply -f \
+https://docs.projectcalico.org/v3.4/getting-started/kubernetes/installation/hosted/etcd.yaml
+Note: You can also view the YAML in a new tab.
+
+You should see the following output.
+
+daemonset.extensions/calico-etcd created
+service/calico-etcd created
+
+Install Calico with the following command.
+
+kubectl apply -f https://docs.projectcalico.org/v3.4/getting-started/kubernetes/installation/hosted/calico.yaml
+Note: You can also view the YAML in a new tab.
+
+You should see the following output.
+
+configmap/calico-config created
+secret/calico-etcd-secrets created
+daemonset.extensions/calico-node created
+serviceaccount/calico-node created
+deployment.extensions/calico-kube-controllers created
+serviceaccount/calico-kube-controllers created
+clusterrole.rbac.authorization.k8s.io/calico-kube-controllers created
+clusterrolebinding.rbac.authorization.k8s.io/calico-kube-controllers created
+clusterrole.rbac.authorization.k8s.io/calico-node created
+clusterrolebinding.rbac.authorization.k8s.io/calico-node created
+Confirm that all of the pods are running with the following command.
+
+watch kubectl get pods --all-namespaces
+
+Wait until each pod has the STATUS of Running.
+
+NAMESPACE    NAME                                       READY  STATUS   RESTARTS  AGE
+kube-system  calico-etcd-x2482                          1/1    Running  0         2m45s
+kube-system  calico-kube-controllers-6ff88bf6d4-tgtzb   1/1    Running  0         2m45s
+kube-system  calico-node-24h85                          2/2    Running  0         2m43s
+kube-system  coredns-846jhw23g9-9af73                   1/1    Running  0         4m5s
+kube-system  coredns-846jhw23g9-hmswk                   1/1    Running  0         4m5s
+kube-system  etcd-jbaker-1                              1/1    Running  0         6m22s
+kube-system  kube-apiserver-jbaker-1                    1/1    Running  0         6m12s
+kube-system  kube-controller-manager-jbaker-1           1/1    Running  0         6m16s
+kube-system  kube-proxy-8fzp2                           1/1    Running  0         5m16s
+kube-system  kube-scheduler-jbaker-1                    1/1    Running  0         5m41s
+Press CTRL+C to exit watch.
+
+Remove the taints on the master so that you can schedule pods on it.
+
+kubectl taint nodes --all node-role.kubernetes.io/master-
+It should return the following.
+
+node/<your-hostname> untainted
+Confirm that you now have a node in your cluster with the following command.
+
+kubectl get nodes -o wide
+It should return something like the following.
+
+NAME              STATUS   ROLES    AGE   VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE             KERNEL-VERSION    CONTAINER-RUNTIME
+<your-hostname>   Ready    master   52m   v1.12.2   10.128.0.28   <none>        Ubuntu 18.04.1 LTS   4.15.0-1023-gcp   docker://18.6.1
+Congratulations! You now have a single-host Kubernetes cluster equipped with Calico.
+
+
+- NETWORK AND PODS AT THIS TIME:
+[root@kc0 etc]# ip addr list
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default 
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host 
+       valid_lft forever preferred_lft forever
+2: enp0s3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group default qlen 1000
+    link/ether 08:00:27:10:44:20 brd ff:ff:ff:ff:ff:ff
+    inet 10.0.2.15/24 brd 10.0.2.255 scope global noprefixroute dynamic enp0s3
+       valid_lft 79432sec preferred_lft 79432sec
+    inet6 fe80::2481:bef7:e0d6:5810/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+3: enp0s8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group default qlen 1000
+    link/ether 08:00:27:7b:13:15 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.11.110/24 brd 192.168.11.255 scope global noprefixroute enp0s8
+       valid_lft forever preferred_lft forever
+    inet6 fe80::5270:6f3b:6966:ad14/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+4: enp0s9: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group default qlen 1000
+    link/ether 08:00:27:ca:34:38 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.11.120/24 brd 192.168.11.255 scope global noprefixroute enp0s9
+       valid_lft forever preferred_lft forever
+    inet6 fe80::b331:1d54:d60b:62c1/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+5: virbr0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default 
+    link/ether 52:54:00:cc:ab:31 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.122.1/24 brd 192.168.122.255 scope global virbr0
+       valid_lft forever preferred_lft forever
+6: virbr0-nic: <BROADCAST,MULTICAST> mtu 1500 qdisc pfifo_fast master virbr0 state DOWN group default qlen 500
+    link/ether 52:54:00:cc:ab:31 brd ff:ff:ff:ff:ff:ff
+7: docker0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default 
+    link/ether 02:42:b1:96:9c:20 brd ff:ff:ff:ff:ff:ff
+    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0
+       valid_lft forever preferred_lft forever
+8: calic748c2d3b23@if3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1440 qdisc noqueue state UP group default 
+    link/ether ee:ee:ee:ee:ee:ee brd ff:ff:ff:ff:ff:ff link-netnsid 0
+    inet6 fe80::ecee:eeff:feee:eeee/64 scope link 
+       valid_lft forever preferred_lft forever
+9: calib049b0cc1c0@if3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1440 qdisc noqueue state UP group default 
+    link/ether ee:ee:ee:ee:ee:ee brd ff:ff:ff:ff:ff:ff link-netnsid 1
+    inet6 fe80::ecee:eeff:feee:eeee/64 scope link 
+       valid_lft forever preferred_lft forever
+10: tunl0@NONE: <NOARP,UP,LOWER_UP> mtu 1440 qdisc noqueue state UNKNOWN group default 
+    link/ipip 0.0.0.0 brd 0.0.0.0
+    inet 192.168.0.0/32 brd 192.168.0.0 scope global tunl0
+       valid_lft forever preferred_lft forever
+
+# netstat -anp |grep cali
+tcp        0      0 127.0.0.1:9099          0.0.0.0:*               LISTEN      23129/calico-node   
+tcp        0      0 10.0.2.15:15665         10.96.232.136:6666      ESTABLISHED 23129/calico-node   
+tcp        0      0 10.0.2.15:15636         10.96.232.136:6666      ESTABLISHED 22941/calico-node   
+tcp        0      0 10.0.2.15:15664         10.96.232.136:6666      ESTABLISHED 23129/calico-node   
+unix  2      [ ACC ]     STREAM     LISTENING     313078   22978/bird6          /var/run/calico/bird6.ctl
+unix  2      [ ACC ]     STREAM     LISTENING     313084   22977/bird           /var/run/calico/bird.ctl
+
+# iptables-save|grep calico
+-A KUBE-SERVICES ! -s 192.168.0.0/16 -d 10.96.232.136/32 -p tcp -m comment --comment "kube-system/calico-etcd: cluster IP" -m tcp --dport 6666 -j KUBE-MARK-MASQ
+-A KUBE-SERVICES -d 10.96.232.136/32 -p tcp -m comment --comment "kube-system/calico-etcd: cluster IP" -m tcp --dport 6666 -j KUBE-SVC-NTYB37XIWATNM25Y
+
+# kubectl get pods --all-namespaces -o wide
+NAMESPACE     NAME                                       READY   STATUS    RESTARTS   AGE   IP               NODE   NOMINATED NODE   READINESS GATES
+kube-system   calico-etcd-cw79p                          1/1     Running   1          45h   192.168.11.110   kc0    <none>           <none>
+kube-system   calico-kube-controllers-5d94b577bb-9ccj5   1/1     Running   3          45h   192.168.11.110   kc0    <none>           <none>
+kube-system   calico-node-j6zg8                          1/1     Running   21         45h   192.168.11.110   kc0    <none>           <none>
+kube-system   coredns-86c58d9df4-dcl97                   1/1     Running   1          46h   192.168.0.3      kc0    <none>           <none>
+kube-system   coredns-86c58d9df4-kh5wv                   1/1     Running   1          46h   192.168.0.4      kc0    <none>           <none>
+kube-system   etcd-kc0                                   1/1     Running   1          46h   192.168.11.110   kc0    <none>           <none>
+kube-system   kube-apiserver-kc0                         1/1     Running   1          46h   192.168.11.110   kc0    <none>           <none>
+kube-system   kube-controller-manager-kc0                1/1     Running   1          46h   192.168.11.110   kc0    <none>           <none>
+kube-system   kube-proxy-57qqj                           1/1     Running   1          46h   192.168.11.110   kc0    <none>           <none>
+kube-system   kube-scheduler-kc0                         1/1     Running   1          46h   192.168.11.110   kc0    <none>           <none>
+
+------------
+ADD NODE
+------------
+# kubeadm join 192.168.11.110:6443 --token d2xaus.sh3382dgq1j2d6gu --discovery-token-ca-cert-hash sha256:a424dae28f46be50fb286b4052ad585a4af4a43f1db6a314af34e937a6fd1060
+NOTE: This joined with NAT address of first interface enps03 instead of enps08
+	Therefore, deleted the node (kubectl delete node kc1), stopped kubelete on node (service kubelet stop),
+	added kc1 in /etc/hosts of node with desired IP address, and then did a join.
+
+On these corrections, output of join:
+[preflight] Running pre-flight checks
+	[WARNING SystemVerification]: this Docker version is not on the list of validated versions: 18.09.0. Latest validated version: 18.06
+[discovery] Trying to connect to API Server "192.168.11.110:6443"
+[discovery] Created cluster-info discovery client, requesting info from "https://192.168.11.110:6443"
+[discovery] Requesting info from "https://192.168.11.110:6443" again to validate TLS against the pinned public key
+[discovery] Cluster info signature and contents are valid and TLS certificate validates against pinned roots, will use API Server "192.168.11.110:6443"
+[discovery] Successfully established connection with API Server "192.168.11.110:6443"
+[join] Reading configuration from the cluster...
+[join] FYI: You can look at this config file with 'kubectl -n kube-system get cm kubeadm-config -oyaml'
+[kubelet] Downloading configuration for the kubelet from the "kubelet-config-1.13" ConfigMap in the kube-system namespace
+[kubelet-start] Writing kubelet configuration to file "/var/lib/kubelet/config.yaml"
+[kubelet-start] Writing kubelet environment file with flags to file "/var/lib/kubelet/kubeadm-flags.env"
+[kubelet-start] Activating the kubelet service
+[tlsbootstrap] Waiting for the kubelet to perform the TLS Bootstrap...
+[patchnode] Uploading the CRI Socket information "/var/run/dockershim.sock" to the Node API object "kc1" as an annotation
+
+This node has joined the cluster:
+* Certificate signing request was sent to apiserver and a response was received.
+* The Kubelet was informed of the new secure connection details.
+
+Run 'kubectl get nodes' on the master to see this node join the cluster.
+
+-- BEFORE FIXES TO /ETC/HOSTS
+# kubectl get nodes -o wide
+NAME   STATUS   ROLES    AGE    VERSION   INTERNAL-IP      EXTERNAL-IP   OS-IMAGE                  KERNEL-VERSION                  CONTAINER-RUNTIME
+kc0    Ready    master   46h    v1.13.1   192.168.11.110   <none>        Oracle Linux Server 7.5   4.1.12-112.16.4.el7uek.x86_64   docker://18.9.0
+kc1    Ready    <none>   2m3s   v1.13.1   10.0.2.15        <none>        Oracle Linux Server 7.5   4.1.12-112.16.4.el7uek.x86_64   docker://18.9.0
+
+-- AFTER FIX TO /ETC/HOSTS
+# kubectl get nodes -o wide
+NAME   STATUS   ROLES    AGE     VERSION   INTERNAL-IP      EXTERNAL-IP   OS-IMAGE                  KERNEL-VERSION                  CONTAINER-RUNTIME
+kc0    Ready    master   2d      v1.13.1   192.168.11.110   <none>        Oracle Linux Server 7.5   4.1.12-112.16.4.el7uek.x86_64   docker://18.9.0
+kc1    Ready    <none>   2m42s   v1.13.1   192.168.11.111   <none>        Oracle Linux Server 7.5   4.1.12-112.16.4.el7uek.x86_64   docker://18.9.0
+
+# kubectl get pods -o wide --all-namespaces
+NAMESPACE     NAME                                       READY   STATUS    RESTARTS   AGE     IP               NODE   NOMINATED NODE   READINESS GATES
+kube-system   calico-etcd-cw79p                          1/1     Running   1          2d      192.168.11.110   kc0    <none>           <none>
+kube-system   calico-kube-controllers-5d94b577bb-9ccj5   1/1     Running   3          2d      192.168.11.110   kc0    <none>           <none>
+kube-system   calico-node-dc5ct                          1/1     Running   0          6m15s   192.168.11.111   kc1    <none>           <none>
+kube-system   calico-node-j6zg8                          1/1     Running   21         2d      192.168.11.110   kc0    <none>           <none>
+kube-system   coredns-86c58d9df4-dcl97                   1/1     Running   1          2d      192.168.0.3      kc0    <none>           <none>
+kube-system   coredns-86c58d9df4-kh5wv                   1/1     Running   1          2d      192.168.0.4      kc0    <none>           <none>
+kube-system   etcd-kc0                                   1/1     Running   1          2d      192.168.11.110   kc0    <none>           <none>
+kube-system   kube-apiserver-kc0                         1/1     Running   1          2d      192.168.11.110   kc0    <none>           <none>
+kube-system   kube-controller-manager-kc0                1/1     Running   0          94m     192.168.11.110   kc0    <none>           <none>
+kube-system   kube-proxy-57qqj                           1/1     Running   1          2d      192.168.11.110   kc0    <none>           <none>
+kube-system   kube-proxy-v7bzq                           1/1     Running   0          6m15s   192.168.11.111   kc1    <none>           <none>
+kube-system   kube-scheduler-kc0                         1/1     Running   1          2d      192.168.11.110   kc0    <none>           <none>
+
+Routing table
+# route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+0.0.0.0         10.0.2.2        0.0.0.0         UG    100    0        0 enp0s3
+10.0.2.0        0.0.0.0         255.255.255.0   U     100    0        0 enp0s3
+172.17.0.0      0.0.0.0         255.255.0.0     U     0      0        0 docker0
+192.168.0.0     192.168.11.120  255.255.255.192 UG    0      0        0 tunl0
+192.168.11.0    0.0.0.0         255.255.255.0   U     101    0        0 enp0s8
+192.168.11.0    0.0.0.0         255.255.255.0   U     102    0        0 enp0s9
+192.168.19.128  0.0.0.0         255.255.255.192 U     0      0        0 *
+192.168.19.129  0.0.0.0         255.255.255.255 UH    0      0        0 cali63b400cc6a6
+192.168.19.130  0.0.0.0         255.255.255.255 UH    0      0        0 calid21f50fa19c
+192.168.122.0   0.0.0.0         255.255.255.0   U     0      0        0 virbr0
+
+- FURTHER, WITHOUT /ETC/HOSTS FIX, TO MAKE IT USE correct interface enps08
+Try https://docs.projectcalico.org/v3.4/usage/configuration/node
+https://github.com/kubernetes/kubernetes/issues/33618  (--hostname-override)
+
+============
+Next steps
+============
+Secure a simple application using the Kubernetes NetworkPolicy API
+Control ingress and egress traffic using the Kubernetes NetworkPolicy API
+Create a user interface that shows blocked and allowed connections in real time
+Install and configure calicoctl
+
+----------------------------------------------------------------------
+Secure a simple application using the Kubernetes NetworkPolicy API
+----------------------------------------------------------------------
+https://docs.projectcalico.org/v3.4/getting-started/kubernetes/tutorials/simple-policy
+(derived from https://kubernetes.io/docs/tasks/administer-cluster/declare-network-policy/)
+(also see https://kubernetes.io/docs/concepts/services-networking/connect-applications-service/)
+
+- create a namespace for demo
+# kubectl create ns policy-demo
+
+- create some pods
+# kubectl run --namespace=policy-demo nginx --replicas=2 --image=nginx
+
+- verify if the pods are accessible
+# kubectl run --namespace=policy-demo access --rm -ti --image busybox /bin/sh
+
+Screen output:
+	kubectl run --generator=deployment/apps.v1 is DEPRECATED and will be removed in a future version. 
+	                                         Use kubectl run --generator=run-pod/v1 or kubectl create instead.
+
+	If you don't see a command prompt, try pressing enter.
+
+	/ # 
+
+This creates a busybox image and container in the node
+# docker ps |grep  busy
+560eea250e5a        busybox                "/bin/sh"                31 seconds ago      Up 30 seconds                           k8s_access_access-69c6dd8f58-6r4zr_policy-demo_5184e3cf-08f2-11e9-96ce-080027104420_0
+
+# kubectl get pods --all-namespaces -o wide |grep acc
+policy-demo   access-69c6dd8f58-6r4zr                    1/1     Running   0          2m10s   192.168.19.132   kc1    <none>           <none>
+
+- pods
+# kubectl get pods -o wide -n policy-demo | grep nginx
+NAME                     READY   STATUS    RESTARTS   AGE     IP               NODE   NOMINATED NODE   READINESS GATES
+nginx-7cdbd8cdc9-9fh44   1/1     Running   0          2m58s   192.168.19.130   kc1    <none>           <none>
+nginx-7cdbd8cdc9-q4tss   1/1     Running   0          2m58s   192.168.19.129   kc1    <none>           <none>
+
+Cannot connect to them from master
+# ping 192.168.19.130
+PING 192.168.19.130 (192.168.19.130) 56(84) bytes of data.
+
+Can connect to them from node
+# ping 192.168.19.130
+PING 192.168.19.130 (192.168.19.130) 56(84) bytes of data.
+64 bytes from 192.168.19.130: icmp_seq=1 ttl=64 time=0.081 ms
+64 bytes from 192.168.19.130: icmp_seq=2 ttl=64 time=0.156 ms
+64 bytes from 192.168.19.130: icmp_seq=3 ttl=64 time=0.056 ms
+
+ALSO, curl works: (from node)
+# curl http://192.168.19.129:80
+# curl http://192.168.19.130:80
+--> both gave nginx page
+
+- EXPOSE NGINX VIA A SERVICE
+# kubectl expose --namespace=policy-demo deployment nginx --port=80
+
+# kubectl get svc -o wide -n policy-demo
+NAME    TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE   SELECTOR
+nginx   ClusterIP   10.105.224.53   <none>        80/TCP    11d   run=nginx
+
+# kubectl describe service nginx -n policy-demo
+Name:              nginx
+Namespace:         policy-demo
+Labels:            run=nginx
+Annotations:       <none>
+Selector:          run=nginx
+Type:              ClusterIP
+IP:                10.105.224.53
+Port:              <unset>  80/TCP
+TargetPort:        80/TCP
+Endpoints:         192.168.19.129:80,192.168.19.130:80
+Session Affinity:  None
+Events:            <none>
+
+- TRY ACCESS THE NGINX NODE FROM BUSYBOX NODE
+# kubectl run --namespace=policy-demo access --rm -ti --image busybox /bin/sh
+
+List the environment inside the pod 
+--> Note that the nginx service items are already configured in the pod - they can be used by apps in the pod
+# env
+KUBERNETES_SERVICE_PORT=443
+KUBERNETES_PORT=tcp://10.96.0.1:443
+HOSTNAME=access-559d799c55-tpsnb
+SHLVL=1
+HOME=/root
+OLDPWD=/
+NGINX_PORT_80_TCP=tcp://10.105.224.53:80
+TERM=xterm
+KUBERNETES_PORT_443_TCP_ADDR=10.96.0.1
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+NGINX_SERVICE_HOST=10.105.224.53
+KUBERNETES_PORT_443_TCP_PORT=443
+KUBERNETES_PORT_443_TCP_PROTO=tcp
+NGINX_PORT=tcp://10.105.224.53:80
+NGINX_SERVICE_PORT=80
+KUBERNETES_SERVICE_PORT_HTTPS=443
+KUBERNETES_PORT_443_TCP=tcp://10.96.0.1:443
+KUBERNETES_SERVICE_HOST=10.96.0.1
+PWD=/etc
+NGINX_PORT_80_TCP_ADDR=10.105.224.53
+NGINX_PORT_80_TCP_PORT=80
+NGINX_PORT_80_TCP_PROTO=tcp
+
+
+Now, from inside the access pod
+# wget -q nginx -O -
+-->TBD This hangs, BUT, WE SHOULD HAVE GOTTEN A RESULT...
+# nslookup nginx
+--> ;; connection timed out; no servers could be reached
+
+(TRY THIS: https://github.com/kelseyhightower/kubernetes-the-hard-way/issues/356)
+--> Per this site, try using busybox:1.28 (see troubleshoot below)
+Also see - how to reconstruct kube-dns: https://github.com/kubernetes/kubeadm/issues/1056
+Also see - for dig command: https://github.com/coredns/coredns/issues/2407
+--> this has problem similar to mine: https://github.com/kubernetes/dns/issues/118
+New issue opened: https://github.com/coredns/coredns/issues/2444 (mine)
+(see another similar issue: https://github.com/coredns/coredns/issues/1879)
+
+	On host, /var/lib/kubelet/config.yaml shows ClusterDns same as the kube-dns IP (10.96.0.10)
+	
+	Get into the nginx pod with shell: (pod name nginx-7cdbd8cdc9-5t8tt from get pods command)
+	# kubectl exec -it -n policy-demo nginx-7cdbd8cdc9-5t8tt -- /bin/sh
+	# (now inside ngnix pod container)
+	# cat /etc/resolv.conf
+	nameserver 10.96.0.10
+	search policy-demo.svc.cluster.local svc.cluster.local cluster.local corp.company.com
+	options ndots:5
+	
+	--> where, the nameserver IP 10.96.0.10 is the kube-dns service cluster IP
+	# kubectl get svc --all-namespaces
+	NAMESPACE     NAME          TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)         AGE
+	default       kubernetes    ClusterIP   10.96.0.1       <none>        443/TCP         14d
+	kube-system   calico-etcd   ClusterIP   10.96.232.136   <none>        6666/TCP        14d
+	kube-system   kube-dns      ClusterIP   10.96.0.10      <none>        53/UDP,53/TCP   14d
+	policy-demo   nginx         ClusterIP   10.105.224.53   <none>        80/TCP          12d
+
+	Troubleshoot: (from busybox pod)
+	https://github.com/kelseyhightower/kubernetes-the-hard-way/issues/356
+	# kubectl run --namespace=policy-demo access --rm -ti --image busybox:1.28 /bin/sh
+
+	NSLOOKUP with this busybox version at least recognizes the dns ip from /etc/resolv.conf,
+	but still does not resolve names
+
+	# nslookup nginx
+	Server:    10.96.0.10
+	Address 1: 10.96.0.10
+
+	nslookup: can't resolve 'nginx'
+	
+	Dig command from master (where coredns pods are running) works:
+	[root@kc0 ~]# dig @192.168.0.3 nginx.policy-demo.svc.cluster.local 
+
+		; <<>> DiG 9.9.4-RedHat-9.9.4-61.el7 <<>> @192.168.0.3 nginx.policy-demo.svc.cluster.local
+		; (1 server found)
+		;; global options: +cmd
+		;; Got answer:
+		;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 18795
+		;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 0
+
+		;; QUESTION SECTION:
+		;nginx.policy-demo.svc.cluster.local. IN	A
+
+		;; ANSWER SECTION:
+		nginx.policy-demo.svc.cluster.local. 5 IN A	10.105.224.53
+
+		;; Query time: 60 msec
+		;; SERVER: 192.168.0.3#53(192.168.0.3)
+		;; WHEN: Tue Jan 08 13:17:59 IST 2019
+		;; MSG SIZE  rcvd: 104
+
+	nginx service details look ok
+	[root@kc0 ~]# kubectl -n policy-demo get svc nginx -o yaml
+	apiVersion: v1
+	kind: Service
+	metadata:
+	  creationTimestamp: "2018-12-26T09:50:42Z"
+	  labels:
+	    run: nginx
+	  name: nginx
+	  namespace: policy-demo
+	  resourceVersion: "39253"
+	  selfLink: /api/v1/namespaces/policy-demo/services/nginx
+	  uid: b59be4b7-08f3-11e9-96ce-080027104420
+	spec:
+	  clusterIP: 10.105.224.53
+	  ports:
+	  - port: 80
+	    protocol: TCP
+	    targetPort: 80
+	  selector:
+	    run: nginx
+	  sessionAffinity: None
+	  type: ClusterIP
+	status:
+	  loadBalancer: {}
+
+
+https://serverfault.com/questions/929211/kubernetes-pod-dns-resolution
+https://stackoverflow.com/questions/33924198/how-do-you-cleanly-list-all-the-containers-in-a-kubernetes-pod
+[root@kc0 ~]# kubectl get pods --namespace=kube-system -l k8s-app=kube-dns -o name
+pod/coredns-86c58d9df4-dcl97
+pod/coredns-86c58d9df4-kh5wv
+
+[root@kc0 ~]# kubectl logs --namespace=kube-system pod/coredns-86c58d9df4-dcl97 
+.:53
+2018-12-26T06:44:46.514Z [INFO] CoreDNS-1.2.6
+2018-12-26T06:44:46.514Z [INFO] linux/amd64, go1.11.2, 756749c
+CoreDNS-1.2.6
+linux/amd64, go1.11.2, 756749c
+ [INFO] plugin/reload: Running configuration MD5 = f65c4821c8a9b7b5eb30fa4fbc167769
+[INFO] Reloading
+ [INFO] plugin/reload: Running configuration MD5 = 2394cf331ea25e9aacc36ddf69fafcdb
+[INFO] Reloading complete
+2019-01-07T09:19:31.13Z [INFO] 127.0.0.1:57445 - 14903 "HINFO IN 6132632801053736099.932022667217554937. udp 56 false 512" SERVFAIL qr,rd 56 20.008645656s
+ [ERROR] plugin/errors: 0 6132632801053736099.932022667217554937. HINFO: unreachable backend: read udp 192.168.0.3:42112->10.97.40.215:53: i/o timeout
+2019-01-07T09:19:34.125Z [INFO] 127.0.0.1:60052 - 25677 "HINFO IN 6132632801053736099.932022667217554937. udp 56 false 512" SERVFAIL qr,rd 56 20.002586427s
+ [ERROR] plugin/errors: 0 6132632801053736099.932022667217554937. HINFO: unreachable backend: read udp 192.168.0.3:58188->10.97.40.215:53: i/o timeout
+2019-01-07T09:19:37.125Z [INFO] 127.0.0.1:38333 - 58158 "HINFO IN 6132632801053736099.932022667217554937. udp 56 false 512" SERVFAIL qr,rd 56 20.002354203s
+
+https://github.com/coredns/coredns/issues/2284
+
+
+Access using cluster IP of the service:
+# wget 10.105.224.53 80
+Connecting to 10.105.224.53 (10.105.224.53:80)
+index.html           100% |***********************************************************************|   612  0:00:00 ETA
+
+tbd:
+- CREATE A POLICY
+From master:
+# kubectl create -f - <<EOF
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: default-deny
+  namespace: policy-demo
+spec:
+  podSelector:
+    matchLabels: {}
+EOF
+
+--> command output message:
+networkpolicy.networking.k8s.io/default-deny created
+
+===================
+CALICOCTL
+===================
+wget https://github.com/projectcalico/calicoctl/releases/download/v2.0.2/calicoctl

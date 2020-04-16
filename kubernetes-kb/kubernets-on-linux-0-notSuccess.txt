@@ -1,0 +1,740 @@
+================================================
+KUBERNETES ON LINUX - INSTALL, CONFIG, BASICS
+================================================
+
+Minikube, getting started with - https://kubernetes.io/docs/tutorials/kubernetes-basics/
+
+https://www.techrepublic.com/article/how-to-quickly-install-kubernetes-on-ubuntu/
+
+Online training courses - 
+https://kubernetes.io/docs/tutorials/online-training/overview/
+
+  Kubernetes the hard way:
+  https://linuxacademy.com/linux/training/course/name/kubernetes-the-hard-way
+
+  Certified Kubernetes Administrator Preparation Course (LinuxAcademy.com)      
+  https://linuxacademy.com/linux/training/lesson/course/certified-kubernetes-administrator-preparation-course/name/set-up-your-practice-cluster
+
+SEEMS GOOD: https://linuxacademy.com/linux/training/lesson/course/certified-kubernetes-administrator-preparation-course/name/set-up-your-practice-cluster
+
+INSTALL, CONFIG:
+
+From scratch - https://kubernetes.io/docs/setup/scratch/#software-binaries
+-> to know a few things on downloads, network, keys etc
+-> ALSO for full installation instructions (but complex - similar to icicimov site below)
+These look full-fledged: 
+
+BEST: (3 nodes, all are master and node at the same time - multimaster??)
+  https://icicimov.github.io/blog/kubernetes/Kubernetes-cluster-step-by-step/
+  https://icicimov.github.io/blog/kubernetes/Kubernetes-cluster-step-by-step-Part2/
+  
+  Also look at https://kubernetes.io/docs/setup/independent/create-cluster-kubeadm/ (single master cluster)
+  
+  This seems a '10 minutes' thing:  https://blog.alexellis.io/kubernetes-in-10-minutes/
+  Using yum - https://www.linuxtechi.com/install-kubernetes-1-7-centos7-rhel7/
+  
+  https://linuxacademy.com/linux/training/lesson/course/certified-kubernetes-administrator-preparation-course/name/set-up-your-practice-cluster
+  
+OTHER:
+https://apassionatechie.wordpress.com/2017/11/28/kubernetes-from-scratch-on-ubuntu-16-04/
+
+https://kubernetes.io/docs/setup/independent/install-kubeadm/
+https://dzone.com/articles/how-to-get-kubernetes-running-on-your-own-ubuntu-m
+
+NETWORK THINGS:
+
+- FLANNEL
+
+Flannel and docker - seems clean: http://cloudgeekz.com/1016/configure-flannel-docker-power.html
+
+Flannel doc:
+https://coreos.com/flannel/docs/latest/flannel-config.html --> Flannel config
+https://coreos.com/flannel/docs/latest/running.html --> config, run, docker integration
+https://github.com/coreos/flannel/issues/426
+
+Flannel doc: https://github.com/coreos/flannel/blob/master/Documentation/configuration.md
+
+VERY GOOD THEORY AND PRACTICE OF FLANNEL (+docker interation): https://blog.laputa.io/kubernetes-flannel-networking-6a1cb1f8ec7c
+
+Flannel troubelshooting:
+https://stackoverflow.com/questions/44538906/in-k8s-environment-build-with-virtualbox-nodes-in-flannel-network-cant-ping-ea
+
+- KUBE NETWORKING
+https://dzone.com/articles/how-to-understand-and-setup-kubernetes-networking  (how to understand and setup networking)
+
+KUBE, FLANNEL WITH READYMADE VAGRANT BOXES
+https://medium.com/@anilkreddyr/kubernetes-with-flannel-understanding-the-networking-part-1-7e1fe51820e4
+https://medium.com/@anilkreddyr/kubernetes-with-flannel-understanding-the-networking-part-2-78b53e5364c7
+============================
+FIRST, A FEW THINGS
+============================
+https://kubernetes.io/docs/setup/independent/install-kubeadm/
+
+Container Software -
+runtime (CRI, Container Runtime Interface) - 
+  Like Docker (other container runtimes are also supported)
+  The container runtime used by default is Docker, which is enabled through the 
+  built-in dockershim CRI implementation inside of the kubelet
+  Others are: containerd (CRI plugin built into containerd), cri-o, frakti, rkt
+        Refer to the CRI installation instructions for more information.
+
+Master - 
+kubeadm: the command to bootstrap the cluster.
+
+Nodes - 
+kubelet: the component that runs on all of the machines in your cluster and does things like starting pods and containers.
+
+Client (CLI) -
+kubectl: the command line util to talk to your cluster.
+
+ETCD & API Server - 
+https://apassionatechie.wordpress.com/2017/11/28/kubernetes-from-scratch-on-ubuntu-16-04/
+Kubernetes use etcd, a distributed database with strong consistency data model 
+to store the state of whole cluster. API Server is the only component that can talk to etcd directly, 
+all other components (including kubelet) have to communicate through API Server. 
+
+===================
+DOWNLOAD
+===================
+
+From https://kubernetes.io/docs/setup/release/notes/
+v1.12.0-rc.2
+  Downloads for v1.12.0-rc.2
+    kubernetes.tar.gz -> THIS (for what?)
+    Client Binaries -> THIS
+    Server Binaries -> THIS
+    Node Binaries -> THIS
+
+
+-rw-r--r--  1 myuser  Users   56850672 Oct 12 10:56 kubectl
+-rw-r--r--@ 1 myuser  Users   14155276 Oct 12 10:49 kubernetes-client-darwin-amd64.tar.gz
+-rw-r--r--  1 myuser  Users   22517760 Oct 12 11:17 kubernetes.tar
+-rw-r--r--@ 1 myuser  Users  104282485 Oct 12 10:52 kubernetes-node-linux-amd64.tar.gz
+-rw-r--r--@ 1 myuser  Users  422567880 Oct 12 10:57 kubernetes-server-linux-amd64.tar.gz
+
+========================
+HOSTNAMES, IP ADDRESSES
+========================
+
+Hostnames:
+Master - kubemaster
+    inet 192.168.11.10/24 brd 192.168.11.255 scope global noprefixroute enp0s8 --> use this for ETCD
+    inet 192.168.12.10/24 brd 192.168.12.255 scope global noprefixroute enp0s9
+
+Node1 - kubenode11 (1 for site1, 1 for node1)
+Node2 - kubenode12 (1 for site1, 2 for node2)
+
+===================
+MASTER
+===================
+
+Method1: Via apt-get (possibly using yum also):
+https://kubernetes.io/docs/setup/independent/install-kubeadm/
+See section "Installing kubeadm, kubelet and kubectl"
+
+Method2: Using the tar files - TBD
+https://apassionatechie.wordpress.com/2017/11/28/kubernetes-from-scratch-on-ubuntu-16-04/
+https://icicimov.github.io/blog/kubernetes/Kubernetes-cluster-step-by-step-Part2/
+
+- DOCKER INSTALL
+TBD - Not sure if it is really needed on master. TBD
+-> However, at least if we run master and node on the same machine, Docker will be needed
+See Appendix on this topic on how to install Docker
+
+- SERVER SOFTWARE INSTALL
+https://icicimov.github.io/blog/kubernetes/Kubernetes-cluster-step-by-step-Part2/
+
+# cd /opt 
+# tar -xzvf kubernetes-server-linux-amd64.tar.gz
+
+# cp kubernetes/server/bin/{hyperkube,kubeadm,kube-apiserver,kubelet,kube-proxy} /usr/local/bin/
+
+Set this in .profile of root
+# export PATH=/opt/kubernetes/server/bin:$PATH
+
+- CLIENT SOFTWARE INSTALL
+NOTE- THIS MAY NOT BE NECESSARY - AS SERVER TAR HAS 'KUBECTL' ALSO
+
+https://icicimov.github.io/blog/kubernetes/Kubernetes-cluster-step-by-step-Part2/
+
+# tar xzfv /media/sf_mystage_host/kubernetes/kubernetes-server-linux-amd64.tar.gz
+This will have just one file 'kubectl'
+Copy that kubectl to /usr/local/bin
+
+-------------------
+ETCD INSTALL
+-------------------
+https://icicimov.github.io/blog/kubernetes/Kubernetes-cluster-step-by-step-Part3/
+ALSO SEE: https://kubernetes.io/docs/setup/independent/setup-ha-etcd-with-kubeadm/ (ports 4001 may not be necessary)
+
+NOTE: This is direct install on machines. Instead, it can be installed in K8 pods or as Docker containers also 
+      (refer to https://icicimov.github.io/blog/kubernetes/Kubernetes-cluster-step-by-step-Part3/)
+
+- INSTALL
+# mkdir -p /var/lib/etcd
+# groupadd -f -g 1501 etcd
+# useradd -c "Etcd key-value store user" -d /var/lib/etcd -s /bin/false -g etcd -u 1501 etcd
+# chown -R etcd:etcd /var/lib/etcd
+
+# cd /usr/local/src (or /opt/etcd)
+# curl -ksL 'https://github.com/coreos/etcd/releases/download/v3.3.0/etcd-v3.3.0-linux-amd64.tar.gz' | tar -xzvf -
+# cp etcd-v3.3.0-linux-amd64/etcd* /usr/local/bin
+
+- CONFIG
+Create the service on each node (master and nodes).
+Note: 192.168.11.10 is the IP of the machine (and initial cluster has other machines that host etcd as a cluster)
+Note: If multiple nodes are not yet created, sometimes etcd does not start if all nodes are mentioned in the config file
+      --> it works sometimes and does not some other times... 
+          If it breaks, then remove non-existent machines from the line "initial-cluster etcd0= ...."
+          
+# cat << EOF > /lib/systemd/system/etcd.service
+[Unit]
+Description=etcd key-value store
+Documentation=https://github.com/coreos/etcd
+
+[Service]
+User=etcd
+Type=notify
+ExecStart=/usr/local/bin/etcd \\
+ --name etcd0 \\
+ --data-dir /var/lib/etcd \\
+ --initial-advertise-peer-urls http://192.168.11.10:2380 \\
+ --listen-peer-urls http://192.168.11.10:2380 \\
+ --listen-client-urls http://192.168.11.10:2379,http://127.0.0.1:2379,http://192.168.11.10:4001 \\
+ --advertise-client-urls http://192.168.11.10:2379,http://192.168.11.10:4001 \\
+ --initial-cluster-token etcd-cluster-1 \\
+ --initial-cluster etcd0=http://192.168.11.10:2380,etcd1=http://192.168.11.11:2380,etcd2=http://192.168.11.12:2380 \\
+ --initial-cluster-state new \\
+ --heartbeat-interval 1000 \\
+ --election-timeout 5000
+Restart=always
+RestartSec=10s
+LimitNOFILE=40000
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+- ETCD SERVICE SETUP
+
+First, stop firewall or open necessary ports:
+# service firewalld stop
+
+Setup the etcd service:
+# systemctl daemon-reload
+# systemctl enable etcd
+# systemctl start etcd.service
+
+# systemctl status -l etcd.service
+- OR - 
+# service etcd status -l
+Redirecting to /bin/systemctl status  -l etcd.service
+● etcd.service - etcd key-value store
+   Loaded: loaded (/usr/lib/systemd/system/etcd.service; enabled; vendor preset: disabled)
+   Active: active (running) since Sun 2018-11-25 12:00:02 IST; 12min ago
+     Docs: https://github.com/coreos/etcd
+ Main PID: 8143 (etcd)
+   Memory: 18.0M
+   CGroup: /system.slice/etcd.service
+           └─8143 /usr/local/bin/etcd --name etcd0 --data-dir /var/lib/etcd --initial-advertise-peer-urls http://192.168.11.10:2380 --listen-peer-urls http://192.168.11.10:2380 --listen-client-urls http://192.168.11.10:2379,http://127.0.0.1:2379,http://192.168.11.10:4001 --advertise-client-urls http://192.168.11.10:2379,http://192.168.11.10:4001 --initial-cluster-token etcd-cluster-1 --initial-cluster etcd0=http://192.168.11.10:2380,etcd1=http://192.168.11.11:2380,etcd2=http://192.168.11.12:2380 --initial-cluster-state new --heartbeat-interval 1000 --election-timeout 5000
+
+Nov 25 12:00:02 kubemaster etcd[8143]: cefbcaac4f708449 became leader at term 3
+Nov 25 12:00:02 kubemaster etcd[8143]: raft.node: cefbcaac4f708449 elected leader cefbcaac4f708449 at term 3
+Nov 25 12:00:02 kubemaster etcd[8143]: published {Name:etcd0 ClientURLs:[http://192.168.11.10:2379 http://192.168.11.10:4001]} to cluster 1728201daf913f68
+Nov 25 12:00:02 kubemaster etcd[8143]: ready to serve client requests
+Nov 25 12:00:02 kubemaster systemd[1]: Started etcd key-value store.
+Nov 25 12:00:02 kubemaster etcd[8143]: serving insecure client requests on 192.168.11.10:2379, this is strongly discouraged!
+Nov 25 12:00:02 kubemaster etcd[8143]: ready to serve client requests
+Nov 25 12:00:02 kubemaster etcd[8143]: serving insecure client requests on 127.0.0.1:2379, this is strongly discouraged!
+Nov 25 12:00:02 kubemaster etcd[8143]: ready to serve client requests
+Nov 25 12:00:02 kubemaster etcd[8143]: serving insecure client requests on 192.168.11.10:4001, this is strongly discouraged!
+
+
+- ETCD CLUSTER STATUS VERIFY
+[root@kubemaster ~]# etcdctl cluster-health
+member cefbcaac4f708449 is healthy: got healthy result from http://192.168.11.10:2379
+cluster is healthy
+
+-------------------
+FLANNEL INSTALL
+-------------------
+Get the latest/recommended Flannel release from https://github.com/coreos/flannel/releases
+
+- NETWORK CONFIG
+https://icicimov.github.io/blog/kubernetes/Kubernetes-cluster-step-by-step-Part4/
+NOTE: Without this, you will get this error when flanneld is run:  
+         E1124 17:05:27.338513  8341 main.go:349] Couldn't fetch network config: 100: Key not found (/coreos.com) 
+
+CIDR for flannel network is: 100.64.0.0 (as in the etcdctl command below)
+
+For this etcdctl, ALSO SEE https://coreos.com/flannel/docs/latest/flannel-config.html
+# etcdctl set /coreos.com/network/config '{ "Network": "100.64.0.0/16", "SubnetLen": 24, "Backend": {"Type": "vxlan"} }'
+
+- INSTALL
+# mkdir /opt/flannel
+# cd /opt/flannel
+# tar tvfpz /media/sf_mystage_host/flannel/flannel-v0.10.0-linux-amd64.tar.gz
+# cp flanneld /usr/local/bin/.
+
+- INITIALIZE
+# flanneld
+TBD: This takes the NAT interface as default. To make it use a different one: https://stackoverflow.com/questions/47845739/configuring-flannel-to-use-a-non-default-interface-in-kubernetes
+Or https://github.com/coreos/flannel/blob/master/Documentation/troubleshooting.md#vagrant
+
+somethig else: https://github.com/coreos/flannel/issues/426
+
+--> WITH DIFFERENT INTERFACE
+# flanneld --iface=enp0s8
+I1124 17:12:19.135304    8830 main.go:488] Using interface with name enp0s8 and address 192.168.11.10
+I1124 17:12:19.135370    8830 main.go:505] Defaulting external address to interface address (192.168.11.10)
+I1124 17:12:19.135431    8830 main.go:235] Created subnet manager: Etcd Local Manager with Previous Subnet: None
+I1124 17:12:19.135436    8830 main.go:238] Installing signal handlers
+I1124 17:12:19.138745    8830 main.go:353] Found network config - Backend type: vxlan
+I1124 17:12:19.138781    8830 vxlan.go:120] VXLAN config: VNI=1 Port=0 GBP=false DirectRouting=false
+I1124 17:12:19.190239    8830 local_manager.go:234] Picking subnet in range 100.64.1.0 ... 100.64.255.0
+I1124 17:12:19.191379    8830 local_manager.go:220] Allocated lease (100.64.53.0/24) to current node (192.168.11.10) 
+I1124 17:12:19.191886    8830 main.go:300] Wrote subnet file to /run/flannel/subnet.env
+I1124 17:12:19.191895    8830 main.go:304] Running backend.
+I1124 17:12:19.229876    8830 vxlan_network.go:60] watching for new subnet leases
+I1124 17:12:19.231694    8830 main.go:396] Waiting for 22h59m59.958772932s to renew lease
+I1124 17:12:19.302950    8830 iptables.go:115] Some iptables rules are missing; deleting and recreating rules
+I1124 17:12:19.302971    8830 iptables.go:137] Deleting iptables rule: -s 100.64.0.0/16 -j ACCEPT
+I1124 17:12:19.338024    8830 iptables.go:137] Deleting iptables rule: -d 100.64.0.0/16 -j ACCEPT
+I1124 17:12:19.352248    8830 iptables.go:125] Adding iptables rule: -s 100.64.0.0/16 -j ACCEPT
+I1124 17:12:19.391676    8830 iptables.go:125] Adding iptables rule: -d 100.64.0.0/16 -j ACCEPT
+
+- VERIFY
+NOTE: FLANNEL_NETWORK is the one we defined in the etcdctl command run before
+# cat /run/flannel/subnet.env
+FLANNEL_NETWORK=100.64.0.0/16
+FLANNEL_SUBNET=100.64.53.1/24
+FLANNEL_MTU=1450
+FLANNEL_IPMASQ=false
+
+# ip -4 -d link show flannel.1
+7: flannel.1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UNKNOWN mode DEFAULT group default 
+    link/ether 32:13:b7:be:22:05 brd ff:ff:ff:ff:ff:ff promiscuity 0 
+    vxlan id 1 local 192.168.11.10 dev enp0s8 srcport 0 0 dstport 8472 nolearning ageing 300 noudpcsum noudp6zerocsumtx
+    noudp6zerocsumrx addrgenmode eui64 numtxqueues 1 numrxqueues 1 
+
+# ip addr list
+7: flannel.1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UNKNOWN group default 
+    link/ether 32:13:b7:be:22:05 brd ff:ff:ff:ff:ff:ff
+    inet 100.64.53.0/32 scope global flannel.1
+       valid_lft forever preferred_lft forever
+    inet6 fe80::3013:b7ff:febe:2205/64 scope link 
+       valid_lft forever preferred_lft forever
+  
+# ifconfig -a
+flannel.1: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1450
+        inet 100.64.53.0  netmask 255.255.255.255  broadcast 0.0.0.0
+        inet6 fe80::3013:b7ff:febe:2205  prefixlen 64  scopeid 0x20<link>
+        ether 32:13:b7:be:22:05  txqueuelen 0  (Ethernet)
+        RX packets 0  bytes 0 (0.0 B)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 0  bytes 0 (0.0 B)
+        TX errors 0  dropped 40 overruns 0  carrier 0  collisions 0
+
+
+# bridge fdb show dev flannel.1
+--> this did not give any result - TBD 
+
+# route -n
+TBD - this has not created any route for flannel (Iface in the table below)
+
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+0.0.0.0         10.0.2.2        0.0.0.0         UG    100    0        0 enp0s3
+10.0.2.0        0.0.0.0         255.255.255.0   U     100    0        0 enp0s3
+10.10.11.0      0.0.0.0         255.255.255.0   U     108    0        0 enp0s9
+172.17.0.0      0.0.0.0         255.255.0.0     U     0      0        0 docker0
+192.168.11.0    0.0.0.0         255.255.255.0   U     107    0        0 enp0s8
+192.168.122.0   0.0.0.0         255.255.255.0   U     0      0        0 virbr0
+
+IDEALLY - a flannel.1 route should start like this:
+# route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+0.0.0.0         192.168.0.1     0.0.0.0         UG    0      0        0 eth0
+100.64.0.0      0.0.0.0         255.255.0.0     U     0      0        0 flannel.1
+100.64.52.0     0.0.0.0         255.255.255.0   U     0      0        0 docker0
+192.168.0.0     0.0.0.0         255.255.255.0   U     0      0        0 eth0
+
+And, 'ip route' should show somthing like this:  (not sure if it should show as 'onlink')
+# ip route
+default via 10.0.2.2 dev enp0s3 proto dhcp metric 100 
+10.0.2.0/24 dev enp0s3 proto kernel scope link src 10.0.2.15 metric 100 
+100.64.89.0/24 via 100.64.89.0 dev flannel.1 onlink 
+192.168.101.0/24 dev enp0s8 proto kernel scope link src 192.168.101.10 metric 101 
+192.168.102.0/24 dev enp0s9 proto kernel scope link src 192.168.102.10 metric 102 
+192.168.122.0/24 dev virbr0 proto kernel scope link src 192.168.122.1 
+
+
+- FLANNELD SERVICE
+NOTE: The following as in the site are deprecated
+  -logtostderr=true \\
+  -subnet-dir=/var/lib/flanneld/networks \\
+
+NOTE: it is -iface not -interface to specify default interface
+
+-- CREATE THE SERVICE CONFIG FILE
+Copy /run/flannel/subnet.env to /var/lib/flanneld/subnet.env (as the latter is referenced in the service config file)
+
+cat << EOF > /lib/systemd/system/flanneld.service
+[Unit]
+Description=Network fabric for containers
+Documentation=https://github.com/coreos/flannel
+After=network.target
+After=network-online.target
+Wants=network-online.target
+After=etcd.service
+Before=docker.service
+
+[Service]
+Type=notify
+Restart=always
+RestartSec=5
+ExecStart=/usr/local/bin/flanneld \\
+  -etcd-endpoints=http://192.168.11.10:4001,http://192.168.11.11:4001,http://192.168.11.12:4001 \\
+  -ip-masq=true \\
+  -subnet-file=/var/lib/flanneld/subnet.env \
+  -iface=enp0s8 \
+  -public-ip=192.168.11.10 
+[Install]
+WantedBy=multi-user.target
+EOF
+
+-- START THE SERVICE
+# service flanneld start
+
+# service flanneld status -l
+Redirecting to /bin/systemctl status  -l flanneld.service
+● flanneld.service - Network fabric for containers
+   Loaded: loaded (/usr/lib/systemd/system/flanneld.service; enabled; vendor preset: disabled)
+   Active: active (running) since Sun 2018-11-25 12:10:54 IST; 2min 42s ago
+     Docs: https://github.com/coreos/flannel
+ Main PID: 9003 (flanneld)
+   Memory: 7.6M
+   CGroup: /system.slice/flanneld.service
+           └─9003 /usr/local/bin/flanneld -etcd-endpoints=http://192.168.11.10:4001,http://192.168.11.11:4001,http://192.168.11.12:4001 -ip-masq=true -subnet-file=/var/lib/flanneld/subnet.env -iface=enp0s8 -public-ip=192.168.11.10
+
+Nov 25 12:10:54 kubemaster flanneld[9003]: I1125 12:10:54.867044    9003 iptables.go:115] Some iptables rules are missing; deleting and recreating rules
+Nov 25 12:10:54 kubemaster flanneld[9003]: I1125 12:10:54.867056    9003 iptables.go:137] Deleting iptables rule: -s 100.64.0.0/16 -d 100.64.0.0/16 -j RETURN
+Nov 25 12:10:54 kubemaster flanneld[9003]: I1125 12:10:54.869049    9003 iptables.go:137] Deleting iptables rule: -s 100.64.0.0/16 ! -d 224.0.0.0/4 -j MASQUERADE
+Nov 25 12:10:54 kubemaster flanneld[9003]: I1125 12:10:54.870582    9003 iptables.go:137] Deleting iptables rule: ! -s 100.64.0.0/16 -d 100.64.53.0/24 -j RETURN
+Nov 25 12:10:54 kubemaster flanneld[9003]: I1125 12:10:54.871724    9003 iptables.go:137] Deleting iptables rule: ! -s 100.64.0.0/16 -d 100.64.0.0/16 -j MASQUERADE
+Nov 25 12:10:54 kubemaster flanneld[9003]: I1125 12:10:54.872806    9003 iptables.go:125] Adding iptables rule: -s 100.64.0.0/16 -d 100.64.0.0/16 -j RETURN
+Nov 25 12:10:54 kubemaster flanneld[9003]: I1125 12:10:54.875050    9003 iptables.go:125] Adding iptables rule: -s 100.64.0.0/16 ! -d 224.0.0.0/4 -j MASQUERADE
+Nov 25 12:10:54 kubemaster flanneld[9003]: I1125 12:10:54.876666    9003 iptables.go:125] Adding iptables rule: ! -s 100.64.0.0/16 -d 100.64.53.0/24 -j RETURN
+Nov 25 12:10:54 kubemaster flanneld[9003]: I1125 12:10:54.878530    9003 iptables.go:125] Adding iptables rule: ! -s 100.64.0.0/16 -d 100.64.0.0/16 -j MASQUERADE
+Nov 25 12:10:54 kubemaster flanneld[9003]: I1125 12:10:54.880269    9003 main.go:396] Waiting for 22h59m59.955101176s to renew lease
+
+# netstat -anp|grep 4001
+tcp        0      0 192.168.11.10:4001      0.0.0.0:*               LISTEN      8143/etcd           
+tcp        0      0 192.168.11.10:10758     192.168.11.10:4001      ESTABLISHED 9003/flanneld       
+tcp        0      0 192.168.11.10:4001      192.168.11.10:10756     ESTABLISHED 8143/etcd           
+tcp        0      0 192.168.11.10:4001      192.168.11.10:10758     ESTABLISHED 8143/etcd           
+tcp        0      0 192.168.11.10:4001      192.168.11.10:10757     ESTABLISHED 8143/etcd           
+tcp        0      0 192.168.11.10:4001      192.168.11.10:10749     ESTABLISHED 8143/etcd           
+tcp        0      0 192.168.11.10:10756     192.168.11.10:4001      ESTABLISHED 9003/flanneld       
+tcp        0      0 192.168.11.10:10757     192.168.11.10:4001      ESTABLISHED 9003/flanneld       
+tcp        0      0 192.168.11.10:10749     192.168.11.10:4001      ESTABLISHED 8143/etcd  
+
+[root@kubemaster system]# netstat -anp|grep 2378
+unix  3      [ ]         STREAM     CONNECTED     32378    2839/gvfsd-trash     
+unix  3      [ ]         STREAM     CONNECTED     22378    1629/master    
+
+[root@kubemaster system]# netstat -anp |grep 2379
+tcp        0      0 192.168.11.10:2379      0.0.0.0:*               LISTEN      8143/etcd           
+tcp        0      0 127.0.0.1:2379          0.0.0.0:*               LISTEN      8143/etcd           
+tcp        0      0 127.0.0.1:2379          127.0.0.1:38365         ESTABLISHED 8143/etcd           
+tcp        0      0 192.168.11.10:34342     192.168.11.10:2379      ESTABLISHED 8143/etcd           
+tcp        0      0 192.168.11.10:2379      192.168.11.10:34342     ESTABLISHED 8143/etcd           
+tcp        0      0 127.0.0.1:38365         127.0.0.1:2379          ESTABLISHED 8143/etcd           
+unix  2      [ ACC ]     STREAM     LISTENING     22379    1629/master          private/verify
+unix  3      [ ]         STREAM     CONNECTED     32379    2290/dbus-daemon     @/tmp/dbus-g9aJA2UPEy
+
+[root@kubemaster system]# netstat -anp |grep 2380
+tcp        0      0 192.168.11.10:2380      0.0.0.0:*               LISTEN      8143/etcd           
+unix  3      [ ]         STREAM     CONNECTED     22380    1629/master  
+
+https://blog.laputa.io/kubernetes-flannel-networking-6a1cb1f8ec7c
+# etcdctl ls /coreos.com/network/subnets
+/coreos.com/network/subnets/100.64.53.0-24
+
+https://blog.laputa.io/kubernetes-flannel-networking-6a1cb1f8ec7c
+# ip route
+default via 10.0.2.2 dev enp0s3 proto dhcp metric 100 
+10.0.2.0/24 dev enp0s3 proto kernel scope link src 10.0.2.15 metric 100 
+172.17.0.0/16 dev docker0 proto kernel scope link src 172.17.0.1 
+192.168.11.0/24 dev enp0s8 proto kernel scope link src 192.168.11.10 metric 101 
+192.168.12.0/24 dev enp0s9 proto kernel scope link src 192.168.12.10 metric 102 
+192.168.122.0/24 dev virbr0 proto kernel scope link src 192.168.122.1 
+
+TBD - IT IS NOT SHOWING FLANNEL IN THIS as follows:
+admin@ip-172-20-33-102:~$ ip route
+100.96.0.0/16 dev flannel0  proto kernel  scope link  src 100.96.1.0
+
+
+======================================
+DOCKER INTEGRATION WITH FLANNEL
+======================================
+
+NOTE: 100.64.53.1/24 is the FLANNEL_SUBNET, 1450 is FLANNEL_MTU from flannel env file.
+
+- EDIT SERVICE CONFIG FILE
+In docker service config file: /usr/lib/systemd/system/docker.service
+# Original After
+#After=network-online.target firewalld.service
+# After - with etcd and flanneld
+After=network-online.target firewalld.service etcd.service flanneld.service
+
+# original ExecStart
+#ExecStart=/usr/bin/dockerd -H unix://
+# modified ExecStart to interface with Flannel
+ExecStart=/usr/bin/dockerd --bip=100.64.53.1/24 --mtu=1450 --iptables=false -H unix://
+
+- RESTART DOCKER
+# systemctl daemon-reload
+# service docker restart
+
+- VERIFY ROUTES
+Note that the route list shows the new Flannel IP than original docker default IPs
+Original: 172.17.0.0/16 dev docker0 proto kernel scope link src 172.17.0.1
+New with Flannel: 100.64.53.0/24 dev docker0 proto kernel scope link src 100.64.53.1 
+
+# ip route
+TBD: This still does not show Flannel - though it shows docker0 with new IP based on Flannel
+
+default via 10.0.2.2 dev enp0s3 proto dhcp metric 100 
+10.0.2.0/24 dev enp0s3 proto kernel scope link src 10.0.2.15 metric 100 
+100.64.53.0/24 dev docker0 proto kernel scope link src 100.64.53.1 
+192.168.11.0/24 dev enp0s8 proto kernel scope link src 192.168.11.10 metric 101 
+192.168.12.0/24 dev enp0s9 proto kernel scope link src 192.168.12.10 metric 102 
+192.168.122.0/24 dev virbr0 proto kernel scope link src 192.168.122.1 
+
+TBD - this still does not show flanel0
+# route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+0.0.0.0         10.0.2.2        0.0.0.0         UG    100    0        0 enp0s3
+10.0.2.0        0.0.0.0         255.255.255.0   U     100    0        0 enp0s3
+100.64.53.0     0.0.0.0         255.255.255.0   U     0      0        0 docker0
+192.168.11.0    0.0.0.0         255.255.255.0   U     101    0        0 enp0s8
+192.168.12.0    0.0.0.0         255.255.255.0   U     102    0        0 enp0s9
+192.168.122.0   0.0.0.0         255.255.255.0   U     0      0        0 virbr0
+
+- VERIFY IP ADDRESSES
+
+# ip -4 addr show
+7: docker0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UP group default 
+    inet 100.64.53.1/24 brd 100.64.53.255 scope global docker0
+       valid_lft forever preferred_lft forever
+8: flannel.1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UNKNOWN group default 
+    inet 100.64.53.0/32 scope global flannel.1
+       valid_lft forever preferred_lft forever
+
+- VERIFY CONTAINER IP's
+Create a container newly or restart an existing container (say, redis1 based on redis image)
+
+# docker inspect redis1 | grep -i IPAddress
+                    "IPAddress": "100.64.53.2"
+
+(this, in the past without flannel would be "IPAddress": "172.17.0.2"
+
+===================
+KUBEADM INIT 
+===================
+[root@kubemaster ~]# kubeadm init --pod-network-cidr=100.64.0.0/24 --ignore-preflight-errors all
+[init] using Kubernetes version: v1.12.2
+[preflight] running pre-flight checks
+	[WARNING Service-Docker]: docker service is not enabled, please run 'systemctl enable docker.service'
+	[WARNING FileContent--proc-sys-net-bridge-bridge-nf-call-iptables]: /proc/sys/net/bridge/bridge-nf-call-iptables does not exist
+	[WARNING Swap]: running with swap on is not supported. Please disable swap
+	[WARNING FileExisting-socat]: socat not found in system path
+[preflight] The system verification failed. Printing the output from the verification:
+KERNEL_VERSION: 4.1.12-112.16.4.el7uek.x86_64
+CONFIG_NAMESPACES: enabled
+CONFIG_NET_NS: enabled
+CONFIG_PID_NS: enabled
+CONFIG_IPC_NS: enabled
+CONFIG_UTS_NS: enabled
+CONFIG_CGROUPS: enabled
+CONFIG_CGROUP_CPUACCT: enabled
+CONFIG_CGROUP_DEVICE: enabled
+CONFIG_CGROUP_FREEZER: enabled
+CONFIG_CGROUP_SCHED: enabled
+CONFIG_CPUSETS: enabled
+CONFIG_MEMCG: enabled
+CONFIG_INET: enabled
+CONFIG_EXT4_FS: enabled (as module)
+CONFIG_PROC_FS: enabled
+CONFIG_NETFILTER_XT_TARGET_REDIRECT: enabled (as module)
+CONFIG_NETFILTER_XT_MATCH_COMMENT: enabled (as module)
+CONFIG_OVERLAY_FS: enabled (as module)
+CONFIG_AUFS_FS: not set - Required for aufs.
+CONFIG_BLK_DEV_DM: enabled (as module)
+DOCKER_VERSION: 18.09.0
+OS: Linux
+CGROUPS_CPU: enabled
+CGROUPS_CPUACCT: enabled
+CGROUPS_CPUSET: enabled
+CGROUPS_DEVICES: enabled
+CGROUPS_FREEZER: enabled
+CGROUPS_MEMORY: enabled
+	[WARNING SystemVerification]: unsupported docker version: 18.09.0
+	[WARNING Service-Kubelet]: kubelet service is not enabled, please run 'systemctl enable kubelet.service'
+	[WARNING Port-2379]: Port 2379 is in use
+	[WARNING DirAvailable--var-lib-etcd]: /var/lib/etcd is not empty
+[preflight/images] Pulling images required for setting up a Kubernetes cluster
+[preflight/images] This might take a minute or two, depending on the speed of your internet connection
+[preflight/images] You can also perform this action in beforehand using 'kubeadm config images pull'
+[preflight] WARNING: unable to stop the kubelet service momentarily: [exit status 5]
+[kubelet] Writing kubelet environment file with flags to file "/var/lib/kubelet/kubeadm-flags.env"
+[kubelet] Writing kubelet configuration to file "/var/lib/kubelet/config.yaml"
+[preflight] Activating the kubelet service
+[preflight] WARNING: unable to start the kubelet service: [exit status 5]
+[preflight] please ensure kubelet is reloaded and running manually.
+[certificates] Generated etcd/ca certificate and key.
+[certificates] Generated etcd/server certificate and key.
+[certificates] etcd/server serving cert is signed for DNS names [kubemaster localhost] and IPs [127.0.0.1 ::1]
+[certificates] Generated etcd/healthcheck-client certificate and key.
+[certificates] Generated etcd/peer certificate and key.
+[certificates] etcd/peer serving cert is signed for DNS names [kubemaster localhost] and IPs [10.0.2.15 127.0.0.1 ::1]
+[certificates] Generated apiserver-etcd-client certificate and key.
+[certificates] Generated ca certificate and key.
+[certificates] Generated apiserver certificate and key.
+[certificates] apiserver serving cert is signed for DNS names [kubemaster kubernetes kubernetes.default kubernetes.default.svc kubernetes.default.svc.cluster.local] and IPs [10.96.0.1 10.0.2.15]
+[certificates] Generated apiserver-kubelet-client certificate and key.
+[certificates] Generated front-proxy-ca certificate and key.
+[certificates] Generated front-proxy-client certificate and key.
+[certificates] valid certificates and keys now exist in "/etc/kubernetes/pki"
+[certificates] Generated sa key and public key.
+[kubeconfig] Wrote KubeConfig file to disk: "/etc/kubernetes/admin.conf"
+[kubeconfig] Wrote KubeConfig file to disk: "/etc/kubernetes/kubelet.conf"
+[kubeconfig] Wrote KubeConfig file to disk: "/etc/kubernetes/controller-manager.conf"
+[kubeconfig] Wrote KubeConfig file to disk: "/etc/kubernetes/scheduler.conf"
+[controlplane] wrote Static Pod manifest for component kube-apiserver to "/etc/kubernetes/manifests/kube-apiserver.yaml"
+[controlplane] wrote Static Pod manifest for component kube-controller-manager to "/etc/kubernetes/manifests/kube-controller-manager.yaml"
+[controlplane] wrote Static Pod manifest for component kube-scheduler to "/etc/kubernetes/manifests/kube-scheduler.yaml"
+[etcd] Wrote Static Pod manifest for a local etcd instance to "/etc/kubernetes/manifests/etcd.yaml"
+[init] waiting for the kubelet to boot up the control plane as Static Pods from directory "/etc/kubernetes/manifests" 
+[init] this might take a minute or longer if the control plane images have to be pulled
+[kubelet-check] It seems like the kubelet isn't running or healthy.
+[kubelet-check] The HTTP call equal to 'curl -sSL http://localhost:10248/healthz' failed with error: Get http://localhost:10248/healthz: dial tcp [::1]:10248: connect: connection refused.
+[kubelet-check] It seems like the kubelet isn't running or healthy.
+[kubelet-check] The HTTP call equal to 'curl -sSL http://localhost:10248/healthz' failed with error: Get http://localhost:10248/healthz: dial tcp [::1]:10248: connect: connection refused.
+[kubelet-check] It seems like the kubelet isn't running or healthy.
+[kubelet-check] The HTTP call equal to 'curl -sSL http://localhost:10248/healthz' failed with error: Get http://localhost:10248/healthz: dial tcp [::1]:10248: connect: connection refused.
+[kubelet-check] It seems like the kubelet isn't running or healthy.
+[kubelet-check] The HTTP call equal to 'curl -sSL http://localhost:10248/healthz' failed with error: Get http://localhost:10248/healthz: dial tcp [::1]:10248: connect: connection refused.
+[kubelet-check] It seems like the kubelet isn't running or healthy.
+[kubelet-check] The HTTP call equal to 'curl -sSL http://localhost:10248/healthz' failed with error: Get http://localhost:10248/healthz: dial tcp [::1]:10248: connect: connection refused.
+
+Unfortunately, an error has occurred:
+	timed out waiting for the condition
+
+This error is likely caused by:
+	- The kubelet is not running
+	- The kubelet is unhealthy due to a misconfiguration of the node in some way (required cgroups disabled)
+
+If you are on a systemd-powered system, you can try to troubleshoot the error with the following commands:
+	- 'systemctl status kubelet'
+	- 'journalctl -xeu kubelet'
+
+Additionally, a control plane component may have crashed or exited when started by the container runtime.
+To troubleshoot, list all containers using your preferred container runtimes CLI, e.g. docker.
+Here is one example how you may list all Kubernetes containers running in docker:
+	- 'docker ps -a | grep kube | grep -v pause'
+	Once you have found the failing container, you can inspect its logs with:
+	- 'docker logs CONTAINERID'
+couldn't initialize a Kubernetes cluster
+[root@kubemaster ~]# 
+
+
+
+To fix kubelet not running:
+This did not fix - https://serverfault.com/questions/877136/debug-kubelet-not-starting
+
+This says turn off swap - https://stackoverflow.com/questions/52119985/kubeadm-init-shows-kubelet-isnt-running-or-healthy
+# swapoff -a
+And, edit /etc/fstab and comment out swap line
+
+Try this kubelet.service configuration: https://github.com/golden-tech-native/dtlib/wiki/7.1-Kubernetes%E5%AE%89%E8%A3%85
+
+===================
+NODES
+===================
+For now, install stuff as done for master
+TBD - what is that node tar for and how to use it
+
+===========================
+APPENDIX - DOCKER INSTALL
+===========================
+https://blog.dbi-services.com/docker-ce-on-oracle-enterprise-linux-7/
+
+https://kubernetes.io/docs/setup/cri/ --> on different container technologies that can be used
+
+From this: https://www.cyberciti.biz/faq/install-use-setup-docker-on-rhel7-centos7-linux/
+
+NOTE:  The systemd service config file is /usr/lib/systemd/system/docker.service
+
+- INSTALL
+# yum remove docker docker-common docker-selinux docker-engine
+# yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+# yum install docker-ce
+
+- START SERVICE
+# systemctl enable docker.service 
+# systemctl start docker.service ## <-- Start docker ##
+# systemctl stop docker.service ## <-- Stop docker ##
+# systemctl restart docker.service ## <-- Restart docker ##
+# systemctl status docker.service ## <-- Get status of docker ##
+
+- VERIFY
+# ip addr list docker0
+8: docker0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default 
+    link/ether 02:42:29:6a:88:33 brd ff:ff:ff:ff:ff:ff
+    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0
+       valid_lft forever preferred_lft forever
+
+# ifconfig -a
+docker0: flags=4099<UP,BROADCAST,MULTICAST>  mtu 1500
+        inet 172.17.0.1  netmask 255.255.0.0  broadcast 172.17.255.255
+        ether 02:42:29:6a:88:33  txqueuelen 0  (Ethernet)
+        RX packets 0  bytes 0 (0.0 B)
+        RX errors 0  dropped 0  overruns 0  frame 0
+        TX packets 0  bytes 0 (0.0 B)
+        TX errors 0  dropped 0 overruns 0  carrier 0  collisions 0
+
+# docker network ls
+NETWORK ID          NAME                DRIVER              SCOPE
+a56638b22ee3        bridge              bridge              local
+defccfe90c4c        host                host                local
+0f059acc8362        none                null                local
+
+===========================
+CONTAINER-SELINUX INSTALL
+===========================
+Error referenced here:  https://blog.dbi-services.com/docker-ce-on-oracle-enterprise-linux-7/
+Fix here: https://stackoverflow.com/questions/45272827/docker-ce-on-rhel-requires-container-selinux-2-9
+
+While installing Docker, it may error out stating container-selinux has to be installed.
+
+ERROR:
+# yum install docker-ce
+...
+...
+--> Finished Dependency Resolution
+Error: Package: 3:docker-ce-18.09.0-3.el7.x86_64 (docker-ce-stable)
+           Requires: container-selinux >= 2.9
+
+HOW TO INSTALL CONTAINER-SELINUX:
+Installing the Selinux from the Centos repository worked for me: 
+1. Go to http://mirror.centos.org/centos/7/extras/x86_64/Packages/ 
+2. Find the latest version for container-selinux i.e. container-selinux-2.21-1.el7.noarch.rpm 
+3. Run the following command on your terminal: $ sudo yum install -y http://mirror.centos.org/centos/7/extras/x86_64/Packages/**Add_current_container-selinux_package_here** 
+4. The command should looks like the following $ sudo yum install -y http://mirror.centos.org/centos/7/extras/x86_64/Packages/container-selinux-2.21-1.el7.noarch.rpm 
+
+NOTE:  Downloaded container-selinux-2.68-1.el7.noarch.rpm 
+       Installed using rpm -Uvh container-selinux-2.68-1.el7.noarch.rpm

@@ -1,0 +1,33 @@
+import(
+"os"
+)
+
+func applySecret(certPath string, keyPath string, namespace string) (err error) {
+	cmd := fmt.Sprintf("kubectl create secret tls app-ssl-secret --key %s --cert %s -n %s -o yaml --dry-run | kubectl apply -n %s -f -", keyPath, certPath, namespace, namespace)
+	if logger.LogLevel1() {
+		log.Print(cmd)
+	}
+	if err := exec.Command("bash", "-c", cmd).Run(); err != nil {
+		return err
+	}
+	return nil
+}
+
+
+func reloadSecret(certPath string, keyPath string, node app.Node, a app.Agent) (err error) {
+	if err := applySecret(certPath, keyPath, "default"); err != nil {
+		log.Printf("Could not create secret in default namespace: %v", err)
+		os.Remove(certPath)
+		os.Remove(certPath)
+		// recursion
+		reloadSecret(certPath, keyPath, node, a)
+		return err
+	}
+	log.Print("Created app-ssl-secret in default namespace")
+	if err := applySecret(certPath, keyPath, "kube-system"); err != nil {
+		log.Printf("Could not create secret in kube-system namespace: %v", err)
+		return err
+	}
+	log.Print("Created app-ssl-secret in kube-system namespace")
+	return nil
+}

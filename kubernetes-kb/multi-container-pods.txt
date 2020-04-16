@@ -1,0 +1,86 @@
+====================================
+MULTI CONTAINER PODS
+====================================
+
+https://kubernetes.io/docs/tasks/access-application-cluster/communicate-containers-same-pod-shared-volume/
+From the site:
+The primary reason that Pods can have multiple containers is to support helper applications that assist a primary 
+application. Typical examples of helper applications are data pullers, data pushers, and proxies. Helper and primary 
+applications often need to communicate with each other. Typically this is done through a shared filesystem, as shown in this
+exercise, or through the loopback network interface, localhost. An example of this pattern is a web server along with a helper program that polls a Git repository for new updates.
+
+The Volume in this exercise provides a way for Containers to communicate during the life of the Pod. If the Pod is deleted
+and recreated, any data stored in the shared Volume is lost.
+
+
+
+==================
+EXAMPLE 1
+==================
+
+----------------------
+POD YAML FILE
+----------------------
+
+multi-nginx-debian.yml:
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: two-containers
+spec:
+
+  restartPolicy: Never
+
+  volumes:
+  - name: shared-data
+    emptyDir: {}
+
+  containers:
+
+  - name: nginx-container
+    image: nginx
+    volumeMounts:
+    - name: shared-data
+      mountPath: /usr/share/nginx/html
+
+  - name: debian-container
+    image: debian
+    volumeMounts:
+    - name: shared-data
+      mountPath: /pod-data
+    command: ["/bin/sh"]
+    args: ["-c", "echo Hello from the debian container > /pod-data/index.html"]
+    
+----------------------
+CREATE THE POD
+----------------------
+kubectl apply -f multi-nginx-debian.yml
+
+----------------------
+VERIFY
+----------------------
+- PODS
+Note: does not list both containers (for that, do a -o yaml and check in the output)
+root@kx00 multi-container-pod]# kubectl get pods two-containers
+NAME             READY   STATUS    RESTARTS   AGE
+two-containers   1/2     Running   0          2m27s
+
+- LOGON TO NGINX (the debian container just runs the echo command and exits)
+# kubectl exec -it two-containers -c nginx-container -- /bin/bash
+root@two-containers:/# 
+
+The following file would have been created by debian container with its echo command
+--> the file shared between the two containers - in /usr/share/nginx/html in nginx and /pod-data in debian containers 
+# ls -l /usr/share/nginx/html
+total 4
+-rw-r--r-- 1 root root 32 May 15 06:47 index.html
+
+- INSTALL CURL, AND PS utilities
+# apt-get update
+# apt-get install curl procps
+# ps aux
+
+- CURL AND CHECK
+# curl localhost
+Hello from the debian container

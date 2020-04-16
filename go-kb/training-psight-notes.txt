@@ -1,0 +1,76 @@
+Author: Sickle
+===========
+GOROUTINES
+===========
+2k mem, grows as needed (vs 1mb per thread in os threads)
+Go does its own connection pooling - so, if there are many threads from programs, go sends them to OS only as needed
+
+- SYNC PACKAGE
+golang.org/pkg/sync
+Main functions in sync package:
+- WaitGroup
+- Mutex
+- RWMutex
+
+Waitgroups - to make a goroutine wait on other goroutines
+- Like a supervisor goroutine - waits for a collection of goroutines to finish
+- normally, those goroutines are created by waitgroup itself
+- waits for those children to complete and then continues its own execution
+
+Mutexes - to manage shared memory
+- 'mut'ual 'ex'clusion lock
+- to protect a piece of code so that only the holder of the mutex lock only can access it 
+- so that only one task access that code at any point in time
+- In the example of db and cache queries - db is persistent - and for every DB query cache is updated
+  - in the querydb function, querydb and querycache - if run as goroutines, both groutines will be accessing same memory
+  - that will cause conflicts
+  - mutexes help here
+  
+querycache(id)
+{
+value=getValFromCache --> place mutex before and after this line
+return value
+}
+querydb(id)
+{
+value=getValFromDB
+setcache(id)=value --> place mutex before and after this line
+return value
+}
+
+- during runtime we get 'race' condition related errors (like waiting for lock)
+- To get warning on race conditions during runtime:
+go run --race .
+or go build --race
+
+- with sleep line in code, it may appear to work well, but race condition may have been circumvented
+
+RW-MUTEX
+- in the above example, mutexes can be placed as noted. 
+- however, it is not worthwhile to have a mutex for read when majority are reads and very small amount of writes 
+- and mutexes are needed only when a read happens while a write is happening
+- RW Mutex (RLock and RUnlock) - will not hold locks for just reads - they lock and unlock only when a write also is active
+- They are MORE EXPENSIVE than regular mutex
+
+=======================
+CHANNELS
+=======================
+Mutexes - goroutines share memory and lock/unlock the memory as needed
+Channels - enable goroutines send copies of memory between them 
+
+Buffered & unbuffered
+Send only, receive only, send and receive - various ways they can operaete
+Open and close channels
+
+Channels need goroutines - because unless a listener is there, a channel cannot receive anything
+- Say, there are two functions - one for putting stuff into a channel and the other to receive from the channel and print
+  - Even if those functions are called in any order - as goroutines - with waitgroups - then channel can write and read
+- Else, if we just have fmt.Println (<-ch) and ch <- 42 
+  - if print comes first then it cannot print (receive message) as channel is not populated yet (message not yet available)
+  - if population step comes first then it cannot populate because there is no listener/consumer to the channel 
+  - therefore, if we have those statements in goroutines and run them simultaneously the waitgroup will ensure both run
+    - makes one sleep, other wake up, and the other wake up - and then all is good
+    - so, print routine cannot find channel, that routine goes to sleep, then populate channel function wakes up, 
+      and then again print routine - and finally print can get message from the channel
+      
+      

@@ -1,0 +1,25 @@
+The libvirt API concepts:
+https://libvirt.org/api.html
+
+Libvirt Virtualization API Project:
+https://github.com/libvirt
+
+Topics"
+https://github.com/topics/libvirt-api
+
+Implementations:
+https://github.com/libvirt/libvirt-go (https://godoc.org/libvirt.org/libvirt-go)
+https://github.com/libvirt/libvirt-go-xml
+https://github.com/digitalocean/go-libvirt
+
+Metrics:
+metrics "github.com/armon/go-metrics"
+
+Docs:
+https://libvirt.org/docs.html
+--> api reference
+
+Docs Go:
+https://godoc.org/github.com/libvirt/libvirt-go --> for go
+https://godoc.org/libvirt.org/libvirt-go --> for go
+Also refer to https://libvirt.org/html/libvirt-libvirt-domain.html (referenced by above go docs)

@@ -1,0 +1,211 @@
+==========================================
+INGRESS USING NGINX AS INGRESS CONTROLLER
+==========================================
+
+THIS DOC DOES NOT DEAL WITH REAL INGRESS CONTROLLER 
+- USED MULTIPLE DOCS OF NGINX COMPANY, AND GOT MIXED UP
+- SEE OTHER DOC FOR NGINX BASED INGRESS CONTROLLER
+
+WITH INGRESS: (not detailed, leads to next page below)
+https://www.nginx.com/blog/nginx-plus-ingress-controller-kubernetes-load-balancing/
+--> needs ingress controller - https://github.com/nginxinc/kubernetes-ingress/blob/master/docs/installation.md
+
+WITHOUT INGRESS: https://www.nginx.com/blog/load-balancing-kubernetes-services-nginx-plus/
+
+CREATE DOCKER IMAGE --> --> https://www.nginx.com/blog/deploying-nginx-nginx-plus-docker/ (building docker image first)
+
+INGRESS: (more docs)
+--> OFFICIAL NGINX COMPANY IMPLEMENTATION - https://github.com/nginxinc/kubernetes-ingress/ (both nginx and nginx+ combined into one controller)
+--> https://www.nginx.com/products/nginx/kubernetes-ingress-controller/
+
+https://github.com/nginxinc/kubernetes-ingress
+--> https://github.com/nginxinc/kubernetes-ingress/tree/master/examples/complete-example (after installation)
+-->--> https://github.com/nginxinc/kubernetes-ingress/blob/master/docs/installation.md (installation)
+
+==========================================
+PULL OR CREATE NGINX IMAGE
+==========================================
+https://www.nginx.com/blog/deploying-nginx-nginx-plus-docker/
+
+Note1: nginx:latest image did not stay put as a k8 container - kept failing.
+       Therefore, pulled nginx:1.7.9 and using it in k8
+
+Note2: Dont create the share and dont create backend.conf - as that is for Nginx-Plus
+
+- Just pull the image (on node or on host/laptop and transfer to node)
+- Use the image put on node in k8 yml
+
+==========================================
+SET UP LOAD BALANCING, INGRESS ETC
+==========================================
+
+WITHOUT INGRESS: (not detailed, leads to next page below)
+https://www.nginx.com/blog/nginx-plus-ingress-controller-kubernetes-load-balancing/
+
+WITH INGRESS: https://www.nginx.com/blog/load-balancing-kubernetes-services-nginx-plus/ 
+
+------------------------------------------
+LABEL A NODE TO USE FOR INGRESS POD
+------------------------------------------
+- LABEL A NODE TO BE USED FOR THIS POD ALWAYS
+# This is optional - to label one node to be used for nginx pod for ingress controller
+#kubectl label node 192.168.11.101 role=nginxnode
+kubectl label node k01 role=nginxnode
+
+---------------------
+CREATE INGRESS POD
+---------------------
+- CREATE POD YML with 1 replica
+The single replica will re-create itself if destroyed - so, always up and running
+
+nginx-ingress-pod.yml
+---------------------
+
+# https://kubernetes.io/docs/tasks/run-application/run-stateless-application-deployment/
+apiVersion: apps/v1 # for versions before 1.9.0 use apps/v1beta2
+#apiVersion: apps/v1beta2 # for versions before 1.9.0 use apps/v1beta2
+kind: Deployment
+metadata:
+  name: nginx-ingress-pod
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+  replicas: 1 # tells deployment to run 2 pods matching the template
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      nodeSelector:
+        role: nginxnode
+      containers:
+      - name: nginx
+        image: nginx
+        ports:
+          - name: http
+            containerPort: 80
+            hostPort: 80
+          - name: http-alt
+            containerPort: 8080
+            hostPort: 8080
+
+- CREATE THE POD
+kubectl create -f nginx-ingress-pod.yml
+
+- VERIFY POD
+
+-- LIST POD
+# kubectl get pods -o wide
+NAME                                 READY   STATUS    RESTARTS   AGE     IP             NODE   NOMINATED NODE
+nginx-ingress-pod-6967d9f7bd-6kl4j   1/1     Running   0          4d19h   192.168.1.85   k01    <none>
+
+-- ACCESS POD
+Do a curl from any machine in the network (from master or own or other nodes)
+If it does not work, try doing 'ifconfig docker0 down' as docker0 interface may be interfering
+
+# curl -I http://192.168.11.101:80
+HTTP/1.1 200 OK
+Server: nginx/1.15.7
+Date: Tue, 18 Dec 2018 05:17:55 GMT
+Content-Type: text/html
+Content-Length: 612
+Last-Modified: Tue, 27 Nov 2018 12:31:56 GMT
+Connection: keep-alive
+ETag: "5bfd393c-264"
+Accept-Ranges: bytes
+
+---------------------------------------------------------------
+CREATE AN APPLICATION & SERVICE - WITH MULTIPLE REPLICAS
+---------------------------------------------------------------
+Note: This nginxdemos/hello is an nginx itself
+
+Here we are declaring a special headless service by setting the ClusterIP field to None. 
+With this type of service, a cluster IP address is not allocated and the service is not available through the kube proxy. 
+A DNS query to the Kubernetes DNS returns multiple A records (the IP addresses of our pods).
+
+We also declare the port that NGINX Plus will use to connect the pods. 
+In addition to specifying the port and target port numbers, we specify the name (http) and the protocol (TCP). 
+We use those values in the NGINX Plus configuration file, in which we tell NGINX Plus to get the 
+port numbers of the pods via DNS using SRV records.
+
+webapp.yml
+----------
+
+# The pod
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: webapp-pod
+spec:
+  replicas: 2
+  selector:
+    app: webapp
+  template:
+    metadata:
+      labels:
+        app: webapp
+    spec:
+      containers:
+      - name: hello
+        image: nginxdemos/hello 
+        ports:
+        - containerPort: 80
+---
+# The service
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapp-svc
+spec:
+  clusterIP: None
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    name: http
+  selector:
+    app: webapp
+
+-- NOW CREATE THE POD AND SERVICE
+
+# kubectl apply -f webapp.yml
+replicationcontroller/webapp-pod created
+service/webapp-svc created
+
+- VERIFY
+# kubectl get pods -o wide
+NAME                                 READY   STATUS    RESTARTS   AGE     IP             NODE   NOMINATED NODE
+nginx-ingress-pod-6967d9f7bd-6kl4j   1/1     Running   0          4d19h   192.168.1.85   k01    <none>
+webapp-pod-859vp                     1/1     Running   0          101s    192.168.2.43   k02    <none>
+webapp-pod-w6pkq                     1/1     Running   0          101s    192.168.1.87   k01    <none>
+
+# kubectl get svc  (NOTE: the webapp-svc does not have a cluster-ip - headless)
+NAME         TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+kubernetes   ClusterIP   10.96.0.1    <none>        443/TCP   19d
+webapp-svc   ClusterIP   None         <none>        80/TCP    4s
+
+# curl -I http://192.168.1.87:80
+HTTP/1.1 200 OK
+Server: nginx/1.13.8
+Date: Tue, 18 Dec 2018 05:32:12 GMT
+Content-Type: text/html
+Connection: keep-alive
+Expires: Tue, 18 Dec 2018 05:32:11 GMT
+Cache-Control: no-cache
+
+# curl -I http://192.168.2.43:80
+HTTP/1.1 200 OK
+Server: nginx/1.13.8
+Date: Tue, 18 Dec 2018 05:32:46 GMT
+Content-Type: text/html
+Connection: keep-alive
+Expires: Tue, 18 Dec 2018 05:32:45 GMT
+Cache-Control: no-cache
+
+==========================================
+CREATE THE INGRESS CONTROLLER
+==========================================
+https://www.nginx.com/blog/nginx-plus-ingress-controller-kubernetes-load-balancing/
+--> Needs this ingress controller - https://github.com/nginxinc/kubernetes-ingress/blob/master/docs/installation.md
+Also see - https://kubernetes.io/docs/concepts/services-networking/ingress/

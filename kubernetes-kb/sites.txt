@@ -1,3 +1,361 @@
+DISCOURSE
+https://blog.openshift.com/kubernetes-deep-dive-api-server-part-2/ - many things
+https://dev.to/chuck_ha/reading-kubernetes-logs-315k - Reading logs 
+
+PLAYGROUNDS:
+https://www.katacoda.com/courses/kubernetes/playground
+http://labs.play-with-k8s.com/
+
+- - - - - - - - - - - - - - - - - 
+NOW USING:
+https://medium.com/containerum/4-ways-to-bootstrap-a-kubernetes-cluster-de0d5150a1e4
+https://blog.inkubate.io/deploy-kubernetes-1-9-from-scratch-on-vmware-vsphere/
+https://www.ibm.com/support/knowledgecenter/en/SSMNED_5.0.0/com.ibm.apic.install.doc/tapic_install_Kubernetes.html
+(similar to https://blog.inkubate.io/deploy-kubernetes-1-9-from-scratch-on-vmware-vsphere/)
+
+https://github.com/kubernetes/kubernetes/issues/51881 (has some simple steps to start each component individually)
+
+Try read this official doc for TLS, certs etc
+- https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet-tls-bootstrapping/
+- https://kubernetes.io/docs/concepts/cluster-administration/certificates/ - how to generate certificates
+- https://kubernetes.io/docs/setup/best-practices/certificates/ - certificates - where all to use
+https://jvns.ca/blog/2017/08/05/how-kubernetes-certificates-work/ - certificates - where all to use
+- - - - - - - - - - - - - - - - - 
+
+COREDNS/KUBE-DNS:
+
+Maybe try this:
+https://github.com/kelseyhightower/kubernetes-the-hard-way/blob/master/docs/12-dns-addon.md (this has for 1.15 coredns itself)
+- OR - 
+https://icicimov.github.io/blog/kubernetes/Kubernetes-cluster-step-by-step-Part7/
+(kubedns derived probably from https://github.com/kubernetes/kubernetes/blob/master/cluster/addons/dns/kube-dns/kube-dns.yaml.base)
+
+Other confusing stuff:
+https://kubernetes.io/docs/tasks/administer-cluster/coredns/ - install addon coredns 
+--> This one is not clear - https://github.com/coredns/deployment/tree/master/kubernetes
+    This is also not clear - https://kubernetes.io/docs/tasks/administer-cluster/dns-custom-nameservers/#coredns
+    Try this one - https://kubernetes.io/docs/concepts/cluster-administration/addons/
+    --> https://coredns.io/
+    These docs above seem to imply that in 1.12 and below versions, install kube-dns first and then change to coredns.
+    --> Installing kube-dns:  ???
+    ALSO SEE various ADDONS and in that dns addons - https://github.com/kubernetes/kubernetes/tree/master/cluster/addons/dns
+
+MULTIMASTTER with KUBEADM: 
+- https://blog.inkubate.io/install-and-configure-a-multi-master-kubernetes-cluster-with-kubeadm/
+(also see https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/high-availability/)
+
+WITH ANSIBLE
+https://www.tauceti.blog/post/kubernetes-the-not-so-hard-way-with-ansible-certificate-authority/
+- https://github.com/kelseyhightower/kubernetes-the-hard-way/blob/1.12.0/docs/02-client-tools.md
+- https://github.com/kelseyhightower/kubernetes-the-hard-way/blob/1.12.0/docs/04-certificate-authority.md
+
+FLANNEL:
+https://blog.laputa.io/kubernetes-flannel-networking-6a1cb1f8ec7c  --> architecture - READ THIS
+
+- - - - - - - - - - - - - - - - - 
+
+*** OFFICIAL DOCS **** (as of Aug 2019)
+
+ADMINISTRATION / TASKS:
+https://kubernetes.io/docs/tasks/
+https://kubernetes.io/docs/tasks/administer-cluster
+
+API:
+https://kubernetes.io/docs/tasks/administer-cluster/access-cluster-api/
+
+CONCEPTS:
+https://kubernetes.io/docs/concepts/
+
+HA TOPOLOGY:
+https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/ha-topology/
+
+CLUSTER SETUP:
+https://kubernetes.io/docs/setup/  (uses kubeadm init)
+
+KUBELET:
+https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/kubelet-integration/
+https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/
+https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/
+
+REFERENCE:
+https://kubernetes.io/docs/reference/
+https://kubernetes.io/docs/reference/command-line-tools-reference/
+https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/
+
+KUBEADM OPTIONS
+https://godoc.org/k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm/v1beta1
+https://godoc.org/k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm/v1beta2
+
+- - - - - - -  --  - --  - -
+MUST TRY:
+https://github.com/kelseyhightower/kubernetes-the-hard-way/tree/master/docs
+
+SOME TOOLING??  (has kube-up.sh)
+https://github.com/kubernetes/kubernetes
+-->
+  https://kubernetes.io/docs/tutorials/kubernetes-basics
+  https://www.udacity.com/course/scalable-microservices-with-kubernetes--ud615
+  
+VARIOUS ARTICLES:
+https://orchestration.io
+https://orchestration.io/2016/10/11/kubernetes-1-3-ha-walkthrough-workers/  --> WORKERS, WITH CERTS, FLANNEL
+
+VARIOUS ARTICLES: (HA)
+https://thenewstack.io/kubernetes-high-availability-no-single-point-of-failure/
+https://stackoverflow.com/questions/50498643/what-is-the-best-way-to-add-a-second-master-in-kubernetes-cluster
+
+VARIOUS ARTICLES:
+K8 with Vagrant - 
+https://medium.com/@wso2tech/multi-node-kubernetes-cluster-with-vagrant-virtualbox-and-kubeadm-9d3eaac28b98
+
+Kubectl remote access - 
+https://medium.com/@wso2tech/configure-local-kubectl-to-access-remote-kubernetes-cluster-ee78feff2d6d
+
+Helm -
+https://medium.com/google-cloud/kubernetes-and-helm-create-your-own-helm-chart-5f54aed894c2
+https://medium.com/@anandpr/helm-and-tiller-steer-away-4ec4d5782081
+
+https://blog.depado.eu/post/ci-cd-with-drone-kubernetes-and-helm-1 (READ THIS)
+https://blog.depado.eu/post/ci-cd-with-drone-kubernetes-and-helm-2 (READ THIS)
+
+Helm without tiller -
+https://jenkins-x.io/news/helm-without-tiller/
+https://blog.giantswarm.io/what-you-yaml-is-what-you-get/
+
+Helm secuirty -
+https://engineering.bitnami.com/articles/helm-security.html
+
+
+CONFIGMAP
+NOTE: official docs are crazy - use other tutorials
+- Tutorials
+https://medium.com/@Alibaba_Cloud/how-to-create-and-use-configmaps-in-kubernetes-e6d1e0b150b4
+    - very good- but does not talk about mounting volumes
+    - "from-env-file" method which converts file contents to literals
+https://docs.openshift.com/container-platform/3.11/dev_guide/configmaps.html
+    - very good, derived from the crazy official docs
+https://unofficial-kubernetes.readthedocs.io/en/latest/tasks/configure-pod-container/configmap/  
+    - very good, derived from the crazy official docs
+https://dzone.com/articles/k8s-knowhow-using-a-configmap
+    - using in java, spring-boot
+https://matthewpalmer.net/kubernetes-app-developer/articles/configmap-example-yaml.html
+    - in this, env var listing for the 'file' key-values did not list as in the example
+
+- For from-env-file
+https://medium.com/@Alibaba_Cloud/how-to-create-and-use-configmaps-in-kubernetes-e6d1e0b150b4
+    - very good- but does not talk about mounting volumes
+    - "from-env-file" method which converts file contents to literals
+https://kubernetes.io/docs/tasks/configure-pod-container/configure-pod-configmap
+    - "from-env-file" method which converts file contents to literals
+    
+- Official docs
+https://kubernetes.io/docs/tasks/configure-pod-container/configure-pod-configmap
+https://kubernetes.io/docs/tasks/configure-pod-container/configure-pod-configmap/#create-configmaps-from-directories
+https://kubernetes.io/docs/tasks/configure-pod-container/configure-pod-configmap/#create-configmaps-from-files
+https://kubernetes.io/docs/tasks/configure-pod-container/configure-pod-configmap/#create-configmaps-from-literal-values
+https://kubernetes.io/docs/tasks/configure-pod-container/configure-pod-configmap/#add-configmap-data-to-a-volume
+  (also https://kubernetes.io/docs/concepts/storage/volumes/#configmap)
+https://kubernetes.io/docs/tasks/configure-pod-container/configure-pod-configmap/#define-container-environment-variables-using-configmap-data
+  
+- CONFIGMAP - restarting pods upon changes to configmap
+https://blog.questionable.services/article/kubernetes-deployments-configmap-change/
+    - in 1.15 onwards automated
+
+====================================
+KUBERNETES INSTALL/CONFIG - HA
+
+  Concept explained:
+  https://elastisys.com/2018/01/25/setting-highly-available-kubernetes-clusters/
+  
+  Setup an HA kubernetes cluster on Bare Metal
+  https://github.com/salmanb/Kubernetes-HA-on-baremetal
+  
+  HA Kubernetes with Kubeadm
+  https://medium.com/@bambash/ha-kubernetes-cluster-via-kubeadm-b2133360b198
+  
+  On setting up highly available Kubernetes clusters
+  https://elastisys.com/2018/01/25/setting-highly-available-kubernetes-clusters/
+  
+  How to Setup Kubernetes Master HA on CentOS?
+  http://www.tothenew.com/blog/how-to-setup-kubernetes-master-ha-on-centos/
+  
+  Managing HA Kubernetes clusters (Rancher Labs meetup video)
+  https://www.youtube.com/watch?v=ppY9cqTvBVE
+
+====================================
+KUBERNETES INSTALL/CONFIG - CORE ONES USED IN THE BEGINNING
+
+Ubuntu based:
+https://blog.alexellis.io/kubernetes-in-10-minutes/
+https://dzone.com/articles/how-to-get-kubernetes-running-on-your-own-ubuntu-m
+https://linuxacademy.com/linux/training/lesson/course/certified-kubernetes-administrator-preparation-course/name/set-up-your-practice-cluster
+
+Ubuntu based: (custom)
+https://apassionatechie.wordpress.com/2017/11/28/kubernetes-from-scratch-on-ubuntu-16-04/
+https://icicimov.github.io/blog/kubernetes/Kubernetes-cluster-step-by-step/
+- https://icicimov.github.io/blog/kubernetes/Kubernetes-cluster-step-by-step-Part4/
+
+Centos: (simple ones)
+https://www.techrepublic.com/article/how-to-install-a-kubernetes-cluster-on-centos-7/  (used for setting up first time)
+https://linuxthegreat.wordpress.com/2017/10/17/installing-kubernetes-1-8-1-on-centos-7/ (used for setting up first time)
+https://www.howtoforge.com/tutorial/centos-kubernetes-docker-cluster/
+https://www.linuxtechi.com/install-kubernetes-1-7-centos7-rhel7/
+https://randomopenstackthoughts.wordpress.com/2019/01/26/install-kubernetes-v1-13-with-docker-18-06-on-centos-7/
+
+General:
+https://kubernetes.io/docs/setup/independent/create-cluster-kubeadm/
+
+Make docker use Flannel:
+http://cloudgeekz.com/1016/configure-flannel-docker-power.html
+
+Some other:
+https://github.com/golden-tech-native/dtlib/wiki/7.1-Kubernetes%E5%AE%89%E8%A3%85
+
+For deployments:
+https://www.mirantis.com/blog/introduction-to-yaml-creating-a-kubernetes-deployment/
+https://kubernetes.io/docs/tasks/run-application/run-stateless-application-deployment/
+http://containertutorials.com/get_started_kubernetes/k8s_example.html
+https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+====================================
+
+KUBERNETES INSTALL/CONFIG
+
+Kubelet config file:
+https://github.com/kelseyhightower/kubernetes-the-hard-way/blob/master/docs/05-kubernetes-configuration-files.md
+
+----TUTORIALS - GOOD ONES (for setup) INSTALL CONFIG 
+
+- DIFFERENT INSTALL/BOOTSTRAP METHODS DESCRIBED
+https://medium.com/containerum/4-ways-to-bootstrap-a-kubernetes-cluster-de0d5150a1e4
+(binaries, docker images, kubeadm)
+(references https://github.com/kelseyhightower/kubernetes-the-hard-way)
+
+- WITH DOCKER IMAGES
+ETCD with etcd docker images:
+ETCD with docker images - https://coreos.com/etcd/docs/latest/v2/docker_guide.html
+
+- WITH BINARY INSTALLS
+https://github.com/kelseyhightower/kubernetes-the-hard-way
+--> Very good with binary installs (but WITH BINARIES - NOT WITH PODS
+
+https://blog.inkubate.io/deploy-kubernetes-1-9-from-scratch-on-vmware-vsphere/
+--> on VMs (using binary installs - not docker images), separated services - AS IN COMPANIES
+--> NOW I AM ADAPTING THIS FOR POD BASED INSTALLS - 3 NODE)
+--> multiple master nodes
+
+https://www.digitalocean.com/community/tutorials/how-to-install-and-configure-kubernetes-on-top-of-a-coreos-cluster
+--> Setup everything manually (on CoreOS) - with binary installs
+
+- OTHERS
+https://joshrendek.com/2018/04/kubernetes-on-bare-metal/
+--> very very good - covers helm, nfs etc
+
+https://www.itzgeek.com/how-tos/linux/centos-how-tos/how-to-install-kubernetes-on-centos-7-ubuntu-18-04-16-04-debian-9.html
+--> with 'Wave' pod network, kubeadm init method
+
+https://www.edureka.co/blog/install-kubernetes-on-ubuntu
+--> on ubuntu, kubeadm init method
+
+https://medium.com/@hashithkarunarathne/create-a-kubernetes-cluster-from-the-scratch-on-centos-7-rhel-7-and-deploy-an-application-on-85a92997b565
+--> kubeadm init method
+
+https://docs.microsoft.com/en-us/virtualization/windowscontainers/kubernetes/creating-a-linux-master
+--> kubeadm init method
+
+With flannel, centos (being used for round 2 POC)
+  https://www.techrepublic.com/article/how-to-install-a-kubernetes-cluster-on-centos-7/
+  Use it along with https://linuxthegreat.wordpress.com/2017/10/17/installing-kubernetes-1-8-1-on-centos-7/
+(to know about kublet not starting)
+  https://www.howtoforge.com/tutorial/centos-kubernetes-docker-cluster/
+
+https://www.aquasec.com/wiki/plugins/servlet/mobile?contentId=1703971#content/view/1703971
+
+https://coderprog.com/docker-kubernetes-complete-guide/
+
+https://www.digitalocean.com/community/tutorials/how-to-create-a-kubernetes-1-10-cluster-using-kubeadm-on-ubuntu-16-04 - good, full, ubuntu, ansible
+
+Without overlay: ubuntu, single node
+https://zihao.me/post/creating-a-kubernetes-cluster-from-scratch-with-kubeadm/
+
+Vagrant, vbox, readymade
+https://geraldonit.com/2018/03/26/deploying-a-kubernetes-cluster-with-vagrant-on-virtual-box/
+
+With weavenet, ubuntu
+https://www.gremlin.com/community/tutorials/how-to-create-a-kubernetes-cluster-on-ubuntu-16-04-with-kubeadm-and-weave-net/
+
+
+KUBERNETES SETUP
+
+Server Setup: https://kubernetes.io/docs/setup/
+Downloads: https://kubernetes.io/docs/setup/release/notes/
+
+(Local trial using minicube:  https://kubernetes.io/docs/setup/minikube/)
+
+TUTORIALS
+http://kubernetesbyexample.com/deployments/
+
+https://kubernetes.io/docs/tutorials/
+
+https://codefresh.io/Kubernetes-Tutorial/intro-minikube-kubernetes-entities/
+
+https://kubernetes.io/docs/setup/minikube/
+
+https://www.tutorialkart.com/kubernetes/kubernetes-tutorial/  (not good)
+
+https://stackoverflow.com/questions/52024961/difference-between-minikube-kubernetes-docker-compose-docker-swarm-etc
+
+https://blog.sicara.com/build-own-cloud-kubernetes-raspberry-pi-9e5a98741b49
+--> https://gist.github.com/alexellis/fdbc90de7691a1b9edb545c17da2d975  (how to install kubernetes on rasperry pi)
+
+Prod, monitoring, prometheus etc
+https://medium.com/@markgituma/kubernetes-local-to-production-with-django-6-add-prometheus-grafana-monitoring-with-helm-926fafbe1d
+
+https://www.techrepublic.com/article/how-to-quickly-install-kubernetes-on-ubuntu/
+https://www.techrepublic.com/article/how-to-deploy-nginx-on-a-kubernetes-cluster/
+
+https://medium.com/@claudiopro/getting-started-with-kubernetes-via-minikube-ada8c7a29620
+Many commands available here:
+https://gist.github.com/sitkevij/b2e8fad3f1bf409d1ba5196cb5f52b55
+Exposing port and accessing url:
+http://192.168.99.100:31317
+
+IMAGE REGISTRIES
+https://kubernetes.io/docs/concepts/containers/images/
+https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+
+LOCAL IMAGE REGISTRY
+https://stackoverflow.com/questions/42564058/how-to-use-local-docker-images-with-minikube
+https://stackoverflow.com/questions/35413195/how-to-use-local-docker-containers-with-kubernetes
+
+DOCKER SAVE
+https://docs.docker.com/engine/reference/commandline/save/
+https://docs.docker.com/engine/reference/commandline/load/
+
+SERVICES
+how to access a service: https://kubernetes.io/docs/concepts/services-networking/connect-applications-service/
+Network Policy: https://kubernetes.io/docs/tasks/administer-cluster/declare-network-policy/
+Good one on services: http://alesnosek.com/blog/2017/02/14/accessing-kubernetes-pods-from-outside-of-the-cluster/
+Good one on services: https://www.cloudtechnologyexperts.com/how-to-create-a-kubernetes-service/
+port, target-port and nodeport explained: https://vitalflux.com/kubernetes-port-targetport-and-nodeport/
+
+CoreDNS for service discovery:
+  https://kubernetes.io/docs/tasks/administer-cluster/coredns/
+  https://kubernetes.io/docs/tasks/administer-cluster/dns-custom-nameservers/#coredns
+
+CoreDNS
+https://coredns.io/plugins/kubernetes/
+https://coredns.io/plugins/health/
+
+Multi-container pods:
+https://kubernetes.io/docs/tasks/access-application-cluster/communicate-containers-same-pod-shared-volume/
+
+OTHER
+
+=======
+
+INTEREACTIVE TUTORIALS
+https://kubernetes.io/docs/tutorials/kubernetes-basics/deploy-app/deploy-interactive/
+
 GOOD INTRO - https://x-team.com/blog/introduction-kubernetes-architecture/
 PODs - https://kubernetes.io/docs/concepts/workloads/pods/pod/
 K8 pods vs Docker swarm - https://platform9.com/blog/compare-kubernetes-vs-docker-swarm/
@@ -17,3 +375,162 @@ minikube - https://kubernetes.io/docs/tutorials/kubernetes-basics/cluster-intro/
 
 
 === on Vagrant VMs - https://coreos.com/kubernetes/docs/latest/kubernetes-on-vagrant.html
+
+ORACLE CLOUD KUBERNETES DOCS
+https://docs.oracle.com/cd/E52668_01/E88884/html/kube_admin_down.html  (bringing down and removing a node)
+
+NETWORKING
+Comparison of flannel, calico etc 
+https://www.objectif-libre.com/en/blog/2018/07/05/k8s-network-solutions-comparison/
+https://sookocheff.com/post/kubernetes/understanding-kubernetes-networking-model/
+
+Networking between pods explained well, create pods and network hands on
+https://neuvector.com/network-security/advanced-kubernetes-networking/
+
+https://blog.laputa.io/kubernetes-flannel-networking-6a1cb1f8ec7c --> very good
+
+Flannel and docker network explained and configuration of integration:
+https://docker-k8s-lab.readthedocs.io/en/latest/docker/docker-flannel.html#restart-docker-daemon-with-flannel-network
+
+Calicoctl, pools etc: https://github.com/projectcalico/calicoctl/issues/1377
+
+Interpod communication
+https://www.mirantis.com/blog/multi-container-pods-and-container-communication-in-kubernetes/
+
+External IPs: 
+https://serverfault.com/questions/705588/how-to-choose-the-external-ip-address-of-a-kubernetes-load-balancer-in-google-ku
+
+DELETE CLUSTER
+https://nirmata-documentation.readthedocs.io/en/latest/Clusters.html  (IN SOME CLOUD)
+
+Listing logs:
+https://stackoverflow.com/questions/37236556/how-to-install-the-kubernetes-dns-addon-manually-skydns-kube2sky-trouble
+
+CONCEPTS
+Concepts: PODS
+https://kubernetes.io/docs/concepts/workloads/pods/pod-overview/
+(also has templates of yaml files)
+
+Concepts: CONTROLLERS - CONTAINERS, PODS, DEPLOYMENTS, REPLICATION CONTROLLERS ETC
+https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+(also has templates for yaml files)
+--> we recommend using Deployments instead of directly using ReplicaSets (as in replicaset section)
+--> you should use a ReplicationController even if your application requires only a single pod 
+    (so that the pod if dies gets re-created - as in ReplicationController section)
+
+Concepts: CONTROLLERS - DEPLOYMENTS
+https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
+--> has example of moving from old to new nginx version in a controlled manner
+
+COMMAND REFERENCE
+https://kubernetes.io/docs/reference/kubectl/cheatsheet/
+https://kubernetes.io/docs/tasks/ --> taskwise
+https://kubernetes.io/docs/concepts/configuration/assign-pod-node/ --> node affinity settings
+https://www.mankier.com/1/kubectl-apply
+https://docs.oracle.com/cd/E52668_01/E88884/html/kube_admin_config.html
+https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/#forward-a-local-port-to-a-port-on-the-pod
+
+SERVICES:
+http://kubernetesbyexample.com/services/
+
+CLUSTER ACCESS, KEYS, CERTS ETC:
+https://kubernetes.io/docs/tasks/access-application-cluster/access-cluster/
+
+DOCKER KUBERNETES INTEGRATION
+https://docker-k8s-lab.readthedocs.io
+https://docker-k8s-lab.readthedocs.io/en/latest/docker/docker-flannel.html#restart-docker-daemon-with-flannel-network
+A Docker K8 non-integration issue: https://stackoverflow.com/questions/51795575/pods-on-different-nodes-cant-ping-each-other
+
+INGRESS
+When to use what
+https://medium.com/google-cloud/kubernetes-nodeport-vs-loadbalancer-vs-ingress-when-should-i-use-what-922f010849e0
+https://kubernetes.io/docs/concepts/services-networking/ingress/
+
+KUBE-PROXY, SERVICES, LOAD BALANCING ETC
+https://github.com/kubernetes/kubernetes/issues/44063
+https://stackoverflow.com/questions/34001758/kube-proxy-in-iptables-mode-is-not-working
+https://kubernetes.io/docs/concepts/services-networking/service/#proxy-mode-userspace
+nslookup issue: https://kubernetes.io/docs/tasks/administer-cluster/dns-debugging-resolution/
+
+SECURITY, IPTABLES ETC
+https://stackoverflow.com/questions/51857978/implementing-iptables-rules-on-kubernetes-nodes
+https://cloud.google.com/kubernetes-engine/docs/how-to/hardening-your-cluster
+https://neuvector.com/container-security/kubernetes-security-guide/
+
+LOAD BALANCER
+https://metallb.universe.tf/  --> METALLB - load balancer for kubernetes
+
+~~~~~~~~~~~~~~~~
+OFFICIAL DOCS
+~~~~~~~~~~~~~~~~
+Install & configure single-master-cluster:
+https://kubernetes.io/docs/setup/independent/install-kubeadm/
+https://kubernetes.io/docs/setup/independent/create-cluster-kubeadm/
+https://kubernetes.io/docs/setup/certificates/
+
+Administration:
+https://kubernetes.io/docs/tasks/
+https://kubernetes.io/docs/tasks/administer-cluster/access-cluster-api/
+
+Security:
+https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/ --> service accounts
+
+------
+CALICO
+------
+https://docs.projectcalico.org/v3.4/getting-started/kubernetes/
+https://docs.projectcalico.org/v3.4/getting-started/kubernetes/tutorials/simple-policy
+https://devcentral.f5.com/articles/calico-kubernetes-and-big-ip-26850
+
+------
+ETCD
+------
+https://coreos.com/etcd/docs/latest/op-guide/runtime-configuration.html
+
+https://github.com/etcd-io/etcd/tree/master/etcdctl
+
+https://github.com/etcd-io/etcd/blob/master/Documentation/op-guide/container.md --> ETCD wit containers
+https://github.com/etcd-io/etcd/blob/master/Documentation/op-guide/security.md  --> ETCD security, keys, certs
+https://coreos.com/etcd/docs/latest/v2/security.html --> ETCD security, keys, certs
+https://coreos.com/etcd/docs/latest/op-guide/security.html --> ETCD security, keys, certs, auto-tls
+
+https://coreos.com/etcd/docs/latest/etcd-live-http-to-https-migration.html --> ETCD security, keys, certs
+https://pcocc.readthedocs.io/en/latest/deps/etcd-production.html --> ETCD security, generate CA cert also
+https://github.com/etcd-io/etcd/issues/7930 -->TLS 2380 issue
+
+https://gist.github.com/Soarez/9688998 --> creating own CA certificate
+https://deliciousbrains.com/ssl-certificate-authority-for-local-https-development/ --> creating own CA certificate
+
+------------------
+ETCD - QUERY DATA
+------------------
+https://stackoverflow.com/questions/47807892/how-to-access-kubernetes-keys-in-etcd --> kubernetes data
+https://github.com/kubernetes/kubernetes/issues/55850 --> in python
+
+=====
+TOOLS
+=====
+https://thenewstack.io/klusterkit-combines-3-open-source-tools-for-managing-kubernetes/
+
+==============================
+RUNNING APPLICATIONS ON K8S
+==============================
+HAPROXY on K8s: https://www.bluematador.com/blog/running-haproxy-docker-containers-kubernetes
+
+==============================
+CONTAINER NETWORKING CNI
+==============================
+https://github.com/containernetworking/cni
+https://github.com/coreos/flannel/blob/master/Documentation/kubernetes.md
+--> https://github.com/containernetworking/plugins
+
+==============================
+EXAMPLES
+==============================
+https://github.com/infrabricks/kubernetes-standalone/blob/master/examples/alpine.yml
+https://gist.github.com/matthewpalmer
+
+MONITORING
+https://sysdig.com/blog/monitoring-kubernetes-with-sysdig-cloud/
+https://www.replex.io/blog/kubernetes-in-production-the-ultimate-guide-to-monitoring-resource-metrics
+https://newrelic.com/platform/kubernetes/monitoring-guide

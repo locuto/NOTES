@@ -1,0 +1,149 @@
+=========================
+BASIC INFO (official doc)
+=========================
+https://github.com/golang/go/wiki/Modules#example
+
+How to Define a Module
+To create a go.mod for an existing project:
+
+--> OUTSIDE GOPATH (desired/future direction)
+Navigate to the root of the module's source tree outside of GOPATH:
+
+$ cd <project path outside $GOPATH/src>         # e.g., cd ~/projects/hello
+Note that outside of GOPATH, you do not need to set GO111MODULE to activate module mode.
+
+--> INSIDE GOPATH
+Alternatively, if you want to work in your GOPATH:
+
+$ export GO111MODULE=on                         # manually active module mode
+$ cd $GOPATH/src/<project path>                 # e.g., cd $GOPATH/src/you/hello
+Create the initial module definition and write it to the go.mod file:
+
+$ go mod init    
+
+===========================================================================
+INSIDE GOPATH  EXAMPLE1 - CREATING AN EXECUTABLE (not creating a module itself)
+===========================================================================
+USING CODE IN - https://roberto.selbach.ca/intro-to-go-modules/
+
+$ mkdir /mygo
+$ cd /mygo
+$ export GOPATH=/mygo
+$ export GO111MODULE=on
+
+$ mkdir -p /mygo/src/roberto1
+$ cd /mygo/src/roberto1
+
+$ go mod init mod
+--> the second mod is for the executable it produces
+--> This will create a go.mod in the same directory
+--> go.mod will have the following content at this time
+module mod
+
+go 1.12
+
+$ vi main.go
+package main
+
+import (
+    "fmt"
+
+    "github.com/robteix/testmod"
+)
+
+func main() {
+    fmt.Println(testmod.Hi("roberto"))
+}
+
+$ go build
+--> This will download the imported packages to /mygo/pkg (the GOPATH) as follows:
+    /mygo/pkg/mod/github.com/robteix/testmod@v1.0.1/testmod.go
+    
+--> It will create an executable 'mod' in /mygo/src/roberto1
+
+$ ./mod
+Hi, roberto
+
+- LEARNINGS
+INSIDE GOPATH - imports will be downloaded to $GOPATH/pkg folder
+
+
+============================
+INSIDE GOPATH - EXAMPLE2
+============================
+$ mkdir /mygo
+$ cd /mygo
+$ export GOPATH=/mygo
+$ export GO111MODULE=on
+
+$ cd /mygo/src
+$ mkdir -p github.com/coderdba/roberto1
+$ cd github.com/coderdba/roberto1
+
+$ go mod init github.com/coderdba/roberto1
+
+$ cat go.mod
+module github.com/coderdba/roberto1
+
+go 1.12
+
+$ vi main.go  (inside /mygo/src/github.com/coderdba/roberto1)
+package main
+
+import (
+    "fmt"
+
+    "github.com/robteix/testmod"
+)
+
+$ go build
+--> This produces roberto1 executable (not mod as in the other example)
+--> This will download the imported packages to /mygo/pkg (the GOPATH) as follows:
+    /mygo/pkg/mod/github.com/robteix/testmod@v1.0.1/testmod.go
+--> --> uses earlier downloaded if there already - to re-download, remove the previous downloaded stuff
+
+$ ls -l
+total 4176
+-rw-------  1   wheel                  88 Apr  2 21:57 go.mod
+-rw-------  1   wheel                 171 Apr  2 21:57 go.sum
+-rw-r--r--  1   wheel                 125 Apr  2 21:56 main.go
+-rwxr-xr-x  1   Users             2124936 Apr  2 21:57 roberto1
+
+
+func main() {
+    fmt.Println(testmod.Hi("roberto"))
+}
+
+
+========================
+NO GOPATH  EXAMPLE1 - CREATING AN EXECUTABLE (not creating a module itself)
+========================
+Unset GOPATH and GO111MODULE (dont even set them)
+$ cd /mygo/src
+$ mkdir roberto2
+$ cd roberto2
+$ go mod init roberto2
+$ vi main.go
+<< same code as before >>
+
+$ go build
+--> This will download imports into OS default location ~/go under ~/go/pkg
+--> This will produce an executable roberto2 in the current folder
+
+========================
+OUTSIDE GOPATH  EXAMPLE1 - CREATING AN EXECUTABLE (not creating a module itself)
+========================
+$ mkdir /mygo/gopath
+$ export GOPATH=/mygo/gopath
+AND, dont even set GO111MODULE
+
+$ cd /mygo/src
+$ mkdir roberto3
+$ cd roberto3
+$ go mod init roberto3
+$ vi main.go
+<< same code as before >>
+
+$ go build
+--> This will download imports into GOPATH location /mygo/gopath under /mygo/gopath/pkg
+--> This will produce an executable roberto3 in the current folder

@@ -1,0 +1,99 @@
+
+=======
+KUBECTL
+=======
+ALL IN ONE CHEAT SHEET - https://kubernetes.io/docs/reference/kubectl/cheatsheet/
+
+# kubectl cluster-info
+Kubernetes master is running at https://192.168.11.110:6443
+KubeDNS is running at https://192.168.11.110:6443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+
+To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
+
+- describe ingresses
+# kubectl describe ing
+# kubectl describe ingresses
+
+- watch a deployment
+# kubectl get pods --all-namespaces -l app.kubernetes.io/name=ingress-nginx --watch
+
+NAMESPACE NAME                                       READY   STATUS              RESTARTS   AGE
+default   nginx-ingress-controller-d8f5b66dc-8sv56   0/1     ContainerCreating   0          8s
+default   nginx-ingress-controller-d8f5b66dc-8sv56   0/1   Error   0     20s
+default   nginx-ingress-controller-d8f5b66dc-8sv56   0/1   Error   1     21s
+default   nginx-ingress-controller-d8f5b66dc-8sv56   0/1   CrashLoopBackOff   1     22s
+default   nginx-ingress-controller-d8f5b66dc-8sv56   0/1   Error   2     34s
+default   nginx-ingress-controller-d8f5b66dc-8sv56   0/1   CrashLoopBackOff   2     49s
+...
+...
+
+- get logs for a pod
+# kubectl -n kube-system logs -f coredns-576cbf47c7-9sbhl
+
+- describe a pod
+kubectl describe pod coredns-576cbf47c7-9sbhl -n kube-system
+
+- describe anything
+kubectl describe pod|deployment|service|... thing_to_describe [-n namespace]
+
+- Dump YAML of objects:
+# kubectl -n kube-system get pod coredns-86c58d9df4-dcl97 -o yaml > coredns.yaml
+
+- Get Json of pod status: (this is used by prometheus metric kube_pod_status_ready as in https://github.com/kubernetes/kube-state-metrics/blob/master/docs/pod-metrics.md)
+
+$ kubectl get pod mypod-lksdjf -o=json | jq .status.conditions
+[
+  {
+    "lastProbeTime": null,
+    "lastTransitionTime": "2019-06-25T21:07:05Z",
+    "status": "True",
+    "type": "Initialized"
+  },
+  {
+    "lastProbeTime": null,
+    "lastTransitionTime": "2019-06-25T21:08:25Z",
+    "status": "True",
+    "type": "Ready"
+  },
+  {
+    "lastProbeTime": null,
+    "lastTransitionTime": "2019-06-25T21:08:25Z",
+    "status": "True",
+    "type": "ContainersReady"
+  },
+  {
+    "lastProbeTime": null,
+    "lastTransitionTime": "2019-06-25T21:06:46Z",
+    "status": "True",
+    "type": "PodScheduled"
+  }
+]
+
+- GET LOGS
+kubectl logs <pod> [<contrainer in multipod>] [-n namespace]
+
+UNTAINT MASTER
+# kubectl taint nodes --all node-role.kubernetes.io/master-
+
+Describe pod (and get status, events and such)
+# kubectl describe pod nginx1-6d85b46d7-tqr6b -n nginx-ns
+
+Delete a node (master)
+# kubectl delete node node_hostname
+
+Drain a node (worker)
+# kubectl drain node node_hostname
+
+Get secrets/tokens
+Kubectl get secret
+Kubectl describe secret 
+kubectl get secret -n kube-system
+kubectl describe secret default-token-jdmf6  -n kube-system
+
+Delete with force
+kubectl delete ds kube-proxy -n kube-system --force --grace-period 0
+kubectl delete pod kube-proxy-zfmrc --force --grace-period=0 
+
+Get service account
+Kubectl get sa
+Kubect delete sa kube-proxy

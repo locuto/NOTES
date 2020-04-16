@@ -1,0 +1,39 @@
+=======
+KUBECTL
+=======
+
+=======
+INSTALL
+=======
+cat <<EOF > /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+EOF
+
+yum install -y kubectl
+
+=========
+COMMANDS
+=========
+# kubectl cluster-info
+Kubernetes master is running at https://192.168.11.110:6443
+KubeDNS is running at https://192.168.11.110:6443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+
+To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
+
+kubectl describe pod -n ns1 prometheus-alertmanager-6b48c96c46-z668r
+--> Gives some description and errors, warnings
+
+kubectl logs -n ns1 prometheus-alertmanager-6b48c96c46-z668r
+--> Logs of single container pod
+
+kubectl logs -n ns1 prometheus-alertmanager-6b48c96c46-z668r prometheus-alertmanager
+--> Logs of a specific container in a multicontainer pod (the second item is the container)
+ 
+kubectl api-resources --verbs=list --namespaced -o name   | xargs -n 1 kubectl get --show-kind --ignore-not-found  -n ingress-nginx
+--> lists all resources/objects in a namespace (add -l <label> to add a label if required)

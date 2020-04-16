@@ -1,0 +1,950 @@
+=====================================
+VIRT INSTALL FROM CENTOS QCOW2
+=====================================
+
+Create VM with qcow2 - and - default bridge virbr0:
+https://www.cyberciti.biz/faq/create-vm-using-the-qcow2-image-file-in-kvm/ 
+https://cloud.centos.org/centos/7/images/ (for images)
+
+For bridge networking - use this:
+- https://computingforgeeks.com/how-to-create-and-configure-bridge-networking-for-kvm-in-linux/
+
+This bridge using nmtui seemed to not work - or maybe we should somehow inject eth config files into the VM:
+- https://www.golinuxcloud.com/how-to-configure-network-bridge-nmtui-linux/
+
+=============
+QUICK HELP
+=============
+- SET KVM VM AUTOSTART UPON HOST RESTART
+virsh autostart <vmname>
+
+=====================================
+DOWNLOAD CENTOS IMAGE
+=====================================
+Download a Centos 'cloud' image from https://cloud.centos.org/centos/7/images/
+- CentOS-7-x86_64-GenericCloud.qcow2.xz
+
+Uncompress 
+  - in Mac
+    $ brew install xz
+    $ xz -d CentOS-7-x86_64-GenericCloud.qcow2.xz
+
+=====================================
+CREATE META-DATA AND USER-DATA
+=====================================
+- Create meta-data file
+instance-id: centos71
+local-hostname: centos71
+
+- Create user-data file
+#cloud-config
+# Customize as per your need. At least change username (gm) and ssh-rsa 
+# key with your actual public key
+ 
+# Hostname management
+preserve_hostname: False
+hostname: centos71
+fqdn: centos71.gm.com
+ 
+# Setup Users with ssh keys so that I can log in into new machine
+users:
+    - default
+    - name: gm
+      groups: ['root']
+      shell: /bin/bash
+      sudo: ALL=(ALL) NOPASSWD:ALL
+      ssh-authorized-keys:
+        - ssh-rsa my-ssh-pub-key gm
+ 
+# Configure where output will go
+output:
+  all: ">> /var/log/cloud-init.log"
+ 
+# configure interaction with ssh server
+#ssh_genkeytypes: ['ed25519', 'rsa']
+ 
+# Install your public ssh key to the first user-defined user configured
+# in cloud.cfg in the template (optional since I created gm user already above)
+ssh_authorized_keys:
+  - ssh-rsa some-or-my-ssh-pub-key KVM VM Lab SSH Login key for user
+ 
+# set timezone for VM
+timezone: Asia/Kolkata
+ 
+# Remove cloud-init 
+runcmd:
+  - systemctl stop network && systemctl start network
+  - yum -y remove cloud-init
+
+=================================
+CREATE ISO SEED FILE
+=================================
+mkisofs -o centos71-seed.iso -V cidata -J -r  meta-data user-data
+
+=================================
+COPY IMAGE QCOW2 ONTO root-disk
+=================================
+# cp CentOS-7-x86_64-GenericCloud.qcow2 /disk1/kvm-vms/centos71/centos71-root.qcow2
+
+==========================================================================
+CREATE VM - WITH DEFAULT BRIDGE VIRBR0
+==========================================================================
+--> THIS WORKS - WITH IP GETTING ASSIGNED
+--> TBD - IP IS NOT PINGABLE FROM OUTSIDE (like from laptop) - AS THIS IS NOT BY DEFAULT ROUTABLE - NEED TO CHECK HOW TO DO THAT
+
+# cp CentOS-7-x86_64-GenericCloud.qcow2 /disk1/kvm-vms/centos71/centos71-root.qcow2
+
+# virt-install --import --name centos71 \
+--memory 256 --vcpus 1 --cpu host \
+--disk /disk1/kvm-vms/centos71/centos71-root.qcow2,format=qcow2,bus=virtio \
+--disk /disk1/kvm-vms/centos71/centos71-seed.iso,device=cdrom \
+--network bridge=virbr0,model=virtio \
+--os-type=linux \
+--os-variant=rhel7 \
+--noautoconsole \
+
+# virsh list --all
+ Id    Name                           State
+----------------------------------------------------
+ 1     centos71                       running
+
+[root@kvm001 centos71]# cp virt-install.sh virt-instll-default.sh^C
+[root@kvm001 centos71]# virsh net-dhcp-leases default
+ Expiry Time          MAC address        Protocol  IP address                Hostname        Client ID or DUID
+-------------------------------------------------------------------------------------------------------------------
+ 2020-02-21 16:09:35  52:54:00:d9:d0:72  ipv4      192.168.122.159/24        centos71        -
+
+# ping 192.168.122.159
+PING 192.168.122.159 (192.168.122.159) 56(84) bytes of data.
+64 bytes from 192.168.122.159: icmp_seq=1 ttl=64 time=0.902 ms
+64 bytes from 192.168.122.159: icmp_seq=2 ttl=64 time=0.705 ms
+
+# cd ~/.ssh
+[root@kvm001 .ssh]# ssh -i ./id_rsa.priv gm@192.168.122.159
+
+[gm@centos71 ~]$ id
+uid=1000(gm) gid=1000(gm) groups=1000(gm),0(root) context=unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023
+
+[gm@centos71 ~]$ sudo -i
+
+[root@centos71 ~]# exit
+
+[gm@centos71 ~]$ exit
+logout
+
+Connection to 192.168.122.159 closed.
+[root@kvm001 .ssh]# 
+
+# virsh destroy centos71
+# virsh undefine centos71
+
+================================================================================================
+CREATE VM - WITH BRIDGE ASSOCIATED WITH A SECOND NIC CARD - BR20 - bridge created using xml
+================================================================================================
+--> THIS WORKS - WITH IP GETTING ASSIGNED
+--> TBD - IP IS NOT PINGABLE FROM OUTSIDE (like from laptop) - AS THIS IS NOT BY DEFAULT ROUTABLE - NEED TO CHECK HOW TO DO THAT
+
+----------------------------
+CREATE BRIDGE BR20
+----------------------------
+- CREATE a file br20.xml
+NOTE: This also has a dhcp range associated with it. Let us see how later it behaves
+NOTE: It also creates a virtual nic card br20-nic similar to virbr0-nic of the default virbr0 bridge of virt
+
+<network>
+  <name>br20</name>
+  <forward mode='nat'>
+    <nat>
+      <port start='1024' end='65535'/>
+    </nat>
+  </forward>
+  <bridge name='br20' stp='on' delay='0'/>
+  <ip address='192.168.99.4' netmask='255.255.255.0'>
+    <dhcp>
+      <range start='192.168.99.91' end='192.168.99.99'/>
+    </dhcp>
+  </ip>
+</network>`
+
+- Define the virsh network
+# virsh net-define br20.xml
+    Network br1 defined from br10.xml
+
+# virsh net-list --all
+ Name                 State      Autostart     Persistent
+----------------------------------------------------------
+ br20                 inactive   no            yes
+ default              active     yes           yes
+
+# virsh net-start br20
+Network br20 started
+
+# virsh net-list --all
+ Name                 State      Autostart     Persistent
+----------------------------------------------------------
+ br20                 active     no            yes
+ default              active     yes           yes
+
+# virsh net-autostart br20
+Network br20 marked as autostarted
+
+# virsh net-list --all
+ Name                 State      Autostart     Persistent
+----------------------------------------------------------
+ br20                 active     yes           yes
+ default              active     yes           yes
+
+# ip a
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host 
+       valid_lft forever preferred_lft forever
+2: enp0s3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group default qlen 1000
+    link/ether 08:00:27:4c:41:7a brd ff:ff:ff:ff:ff:ff
+    inet 10.0.2.15/24 brd 10.0.2.255 scope global noprefixroute dynamic enp0s3
+       valid_lft 84736sec preferred_lft 84736sec
+    inet6 fe80::f514:5f6b:225c:3851/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+3: enp0s8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast master br10 state UP group default qlen 1000
+    link/ether 08:00:27:f8:99:79 brd ff:ff:ff:ff:ff:ff
+4: enp0s9: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group default qlen 1000
+    link/ether 08:00:27:fc:b4:3f brd ff:ff:ff:ff:ff:ff
+    inet 192.168.98.21/24 brd 192.168.98.255 scope global noprefixroute enp0s9
+       valid_lft forever preferred_lft forever
+    inet6 fe80::eb41:c910:a0c5:4042/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+5: br10: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    link/ether 08:00:27:f8:99:79 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.99.3/32 brd 192.168.99.3 scope global noprefixroute br10
+       valid_lft forever preferred_lft forever
+    inet6 fe80::a00:27ff:fef8:9979/64 scope link 
+       valid_lft forever preferred_lft forever
+6: virbr0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default qlen 1000
+    link/ether 52:54:00:08:e8:f5 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.122.1/24 brd 192.168.122.255 scope global virbr0
+       valid_lft forever preferred_lft forever
+7: virbr0-nic: <BROADCAST,MULTICAST> mtu 1500 qdisc pfifo_fast master virbr0 state DOWN group default qlen 1000
+    link/ether 52:54:00:08:e8:f5 brd ff:ff:ff:ff:ff:ff
+8: br20: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default qlen 1000
+    link/ether 52:54:00:3d:e0:23 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.99.4/24 brd 192.168.99.255 scope global br20
+       valid_lft forever preferred_lft forever
+9: br20-nic: <BROADCAST,MULTICAST> mtu 1500 qdisc pfifo_fast master br20 state DOWN group default qlen 1000
+    link/ether 52:54:00:3d:e0:23 brd ff:ff:ff:ff:ff:ff
+
+----------------------------
+CREATE THE VM
+----------------------------
+--memory 256 --vcpus 1 --cpu host \
+--disk /disk1/kvm-vms/centos71/centos71-root.qcow2,format=qcow2,bus=virtio \
+--disk /disk1/kvm-vms/centos71/centos71-seed.iso,device=cdrom \
+--network bridge=br20,model=virtio \
+--os-type=linux \
+--os-variant=rhel7 \
+--noautoconsole \
+
+This did not give the popup window of virt.  So, do "virsh console centos71 and watch until you get login: prompt"
+
+- VERIFY
+[root@kvm001 centos71]# virsh net-dhcp-leases  br20
+ Expiry Time          MAC address        Protocol  IP address                Hostname        Client ID or DUID
+-------------------------------------------------------------------------------------------------------------------
+ 2020-02-21 16:52:01  52:54:00:88:08:4c  ipv4      192.168.99.96/24          centos71        -
+
+[root@kvm001 centos71]# cd ~/.ssh
+[root@kvm001 .ssh]# ssh -i ./id_rsa.gtgt gm@192.168.99.96
+[gm@centos71 ~]$ id
+uid=1000(gm) gid=1000(gm) groups=1000(gm),0(root) context=unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023
+[gm@centos71 ~]$ sudo -i
+[root@centos71 ~]# exit
+[gm@centos71 ~]$ exit
+logout
+Connection to 192.168.99.96 closed.
+[root@kvm001 .ssh]# 
+
+- IP ADDRESSES OF THE KVM VM
+[root@centos71 ~]# ip a
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host 
+       valid_lft forever preferred_lft forever
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group default qlen 1000
+    link/ether 52:54:00:88:08:4c brd ff:ff:ff:ff:ff:ff
+    inet 192.168.99.96/24 brd 192.168.99.255 scope global dynamic eth0
+       valid_lft 2147sec preferred_lft 2147sec
+    inet6 fe80::5054:ff:fe88:84c/64 scope link 
+       valid_lft forever preferred_lft forever
+
+
+- PING EXTERNAL WORLD FROM INSIDE THE KVM VM
+[root@centos71 ~]# ping bm1.company.com
+PING bm1.company.com (110.224.182.141) 56(84) bytes of data.
+64 bytes from bm1.company.com (110.224.182.141): icmp_seq=1 ttl=61 time=283 ms
+64 bytes from bm1.company.com (110.224.182.141): icmp_seq=1 ttl=61 time=283 ms
+
+- PING FROM VIRTUALBOX HOST (in nested virtualization)
+NOTE: This fails. Need to figure out how to achieve KVM VMs pingable from outside
+
+$ ping 192.168.99.96
+PING 192.168.99.96 (192.168.99.96): 56 data bytes
+Request timeout for icmp_seq 0
+
+===============================================================================================
+WIP - CREATE VM - WITH BRIDGE WITH A SECOND NIC CARD BR10 - CREATED WITH network-scripts FILES
+===============================================================================================
+
+NIC Cards:
+enp0s8 - 192.168.99.21 (yes 99) --> for VMs
+enp0s9 - 192.168.98.21 (yes 98)
+
+---------------
+CREATE BRIDGE
+---------------
+Note: Combined bridge config stuff from both these sites
+- https://www.golinuxcloud.com/how-to-configure-network-bridge-nmtui-linux/
+- https://www.linuxtechi.com/install-kvm-hypervisor-on-centos-7-and-rhel-7/
+
+- Edit /etc/sysconfig/network-scripts/ifcfg-br10
+DEVICE=br10
+STP=no
+TYPE=Bridge
+BOOTPROTO=none
+IPADDR=192.168.99.3  --> IP in the range of the underlying Virtualbox host-network IP of enp0s8
+PREFIX=32
+GATEWAY=192.168.99.1 --> gave Virtualbox host-network starting IP (no idea if it helps or hurts or neutral)
+DNS1=192.168.99.1    --> gave Virtualbox host-network starting IP (no idea if it helps or hurts or neutral)
+IPV6INIT=no
+NAME=br10-bridge
+ONBOOT=yes
+DELAY=0
+
+Example1: (c)
+TYPE="Bridge"
+NAME="br30"
+DEVICE="br30"
+USERCTL="no"
+ONBOOT="yes"
+BOOTPROTO="none"
+ZONE=drop
+
+Example2:
+TYPE=Bridge
+BOOTPROTO=static
+DEVICE=br0
+ONBOOT=yes
+IPADDR=192.168.10.21
+NETMASK=255.255.255.0
+GATEWAY=192.168.10.1
+DNS1=192.168.10.11
+
+Example3:
+DEVICE=nm-bridge1
+STP=no
+TYPE=Bridge
+BOOTPROTO=none
+IPADDR=10.43.138.12
+PREFIX=32
+GATEWAY=10.43.138.30
+IPV6INIT=no
+NAME=br1
+ONBOOT=yes
+DELAY=0
+
+
+- Edit /etc/sysconfig/network-scripts/ifcfg-enp0s8 --> existing nic - add bridge=br10 directive to it
+
+HWADDR=08:00:27:F8:99:79
+TYPE=Ethernet
+PROXY_METHOD=none
+BROWSER_ONLY=no
+BOOTPROTO=none --> keep this as is as 'none' - 'static' is deprecated (and 'dhcp' and 'bootp' we dont use as of now???)
+DEFROUTE=yes
+IPV4_FAILURE_FATAL=no
+IPV6INIT=yes
+IPV6_AUTOCONF=yes
+IPV6_DEFROUTE=yes
+IPV6_FAILURE_FATAL=no
+IPV6_ADDR_GEN_MODE=stable-privacy
+NAME=enp0s8
+UUID=3bc247ee-4b72-30dd-9f2b-e9c76581e459
+ONBOOT=yes
+AUTOCONNECT_PRIORITY=-999
+IPADDR=192.168.99.21
+PREFIX=24
+BRIDGE=br10 --> just added this
+
+Example1: (c)
+NAME="bond1.30"
+DEVICE="bond1.30"
+USERCTL="no"
+ONBOOT="yes"
+BOOTPROTO="none"
+VLAN="yes"
+BRIDGE="br30"
+ZONE=drop
+
+Example2:
+TYPE=Ethernet
+BOOTPROTO=static
+DEVICE=eno49
+ONBOOT=yes
+BRIDGE=br0
+
+Example3:
+TYPE=Ethernet
+NAME="Ethernet connection 2"
+DEVICE=eno52
+ONBOOT=yes
+BRIDGE=nm-bridge1
+
+- Restart network
+# systemctl restart NetworkManager
+# ifdown enp0s8
+# ifup enp0s8
+(restart machine if interface does not show up against br10 - or do an ifdown/ifup enp0s8)
+
+- Verify
+
+[root@kvm001 ~]# ip a
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host 
+       valid_lft forever preferred_lft forever
+2: enp0s3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group default qlen 1000
+    link/ether 08:00:27:4c:41:7a brd ff:ff:ff:ff:ff:ff
+    inet 10.0.2.15/24 brd 10.0.2.255 scope global noprefixroute dynamic enp0s3
+       valid_lft 86275sec preferred_lft 86275sec
+    inet6 fe80::f514:5f6b:225c:3851/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+3: enp0s8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast master br10 state UP group default qlen 1000
+    link/ether 08:00:27:f8:99:79 brd ff:ff:ff:ff:ff:ff
+4: enp0s9: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group default qlen 1000
+    link/ether 08:00:27:fc:b4:3f brd ff:ff:ff:ff:ff:ff
+    inet 192.168.98.21/24 brd 192.168.98.255 scope global noprefixroute enp0s9
+       valid_lft forever preferred_lft forever
+    inet6 fe80::eb41:c910:a0c5:4042/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+5: br10: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    link/ether 08:00:27:f8:99:79 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.99.3/32 brd 192.168.99.3 scope global noprefixroute br10
+       valid_lft forever preferred_lft forever
+    inet6 fe80::a00:27ff:fef8:9979/64 scope link 
+       valid_lft forever preferred_lft forever
+6: virbr0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default qlen 1000
+    link/ether 52:54:00:08:e8:f5 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.122.1/24 brd 192.168.122.255 scope global virbr0
+       valid_lft forever preferred_lft forever
+7: virbr0-nic: <BROADCAST,MULTICAST> mtu 1500 qdisc pfifo_fast master virbr0 state DOWN group default qlen 1000
+    link/ether 52:54:00:08:e8:f5 brd ff:ff:ff:ff:ff:ff
+    
+[root@kvm001 ~]# brctl show
+bridge name	  bridge id		      STP enabled	interfaces
+br10		      8000.080027f89979	no		      enp0s8
+virbr0		    8000.52540008e8f5	yes		      virbr0-ni
+
+# virsh net-list (shows only default which is virbr0 created by virt) --> MAYBE EXPECTED BEHAVIOR
+ Name                 State      Autostart     Persistent
+----------------------------------------------------------
+ default              active     yes           yes
+
+----------------------------
+CREATE THE VM
+----------------------------
+NOTE: This did not give the virt popup window - therefore, do "virt-console <vmname>" and watch until you get login: prompt
+
+virt-install --import --name centos71 \
+--memory 256 --vcpus 1 --cpu host \
+--disk /disk1/kvm-vms/centos71/centos71-root.qcow2,format=qcow2,bus=virtio \
+--disk /disk1/kvm-vms/centos71/centos71-seed.iso,device=cdrom \
+--network bridge=br10,model=virtio \
+--os-type=linux \
+--os-variant=rhel7 \
+--noautoconsole \
+
+As this br10 does not show in "virsh net-list" I could not get the IP address if any - possibly not set up
+
+=================================
+FAILED - CREATE VM - RUN VIRT-INSTALL --> with custom bridge br0
+--> FAILED
+=================================
+
+NOTE: THIS DID NOT CREATE THE MACHINE PROPERLY - IF CREATED PROPERLY, WE SHOULD GET A BLACK LOGIN SCREEN FOR THIS VM
+- THAT WAS BECAUSE IT DID NOT USE BRIDGE br0 properly
+- SEE THE NEXT SECTION WITH default bridge virbr0
+
+# virt-install --import --name nodocker1 \
+--memory 256 --vcpus 1 --cpu host \
+--disk /disk1/kvm-vms/centos71/centos71-root.qcow2,format=qcow2,bus=virtio \
+--disk /disk1/kvm-vms/centos71/centos71-seed.iso,device=cdrom \
+--network bridge=br10,model=virtio \
+--os-type=linux \
+--os-variant=rhel7 \
+--noautoconsole
+
+- LIST THE VM
+# virsh list
+ Id    Name                           State
+----------------------------------------------------
+ 2     centos71                       running
+
+- LIST IPs on HOST
+The VM has not gotten any IP (as we did not set it, and have chosen no DHCP for br0)
+- but, we see a new interface vnet0
+
+# ip a
+12: br10: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+    link/ether fe:54:00:39:1a:5e brd ff:ff:ff:ff:ff:ff
+    inet 192.168.99.3/24 brd 192.168.99.255 scope global noprefixroute br10
+       valid_lft forever preferred_lft forever
+    inet6 fe80::ebf8:6ca5:dc5e:508/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+14: vnet0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast master br10 state UNKNOWN group default qlen 1000
+    link/ether fe:54:00:39:1a:5e brd ff:ff:ff:ff:ff:ff
+    inet6 fe80::fc54:ff:fe39:1a5e/64 scope link 
+       valid_lft forever preferred_lft forever
+
+- NETWORK INFO FROM XML (see dump xml down below)
+    <interface type='bridge'>
+      <mac address='52:54:00:39:1a:5e'/>
+      <source bridge='br10'/>
+      <target dev='vnet0'/>
+      <model type='virtio'/>
+      <alias name='net0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x0'/>
+    </interface>
+
+- DUMP THE VM XML
+# virsh dumpxml centos71
+
+<domain type='kvm' id='2'>
+  <name>centos71</name>
+  <uuid>91fe2d10-4906-434c-ba48-9508ccf8b4e0</uuid>
+  <memory unit='KiB'>262144</memory>
+  <currentMemory unit='KiB'>262144</currentMemory>
+  <vcpu placement='static'>1</vcpu>
+  <resource>
+    <partition>/machine</partition>
+  </resource>
+  <os>
+    <type arch='x86_64' machine='pc-i440fx-rhel7.0.0'>hvm</type>
+    <boot dev='hd'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+  </features>
+  <cpu mode='custom' match='exact' check='full'>
+    <model fallback='forbid'>Skylake-Client</model>
+    <vendor>Intel</vendor>
+    <feature policy='disable' name='ht'/>
+    <feature policy='disable' name='monitor'/>
+    <feature policy='disable' name='vmx'/>
+    <feature policy='disable' name='osxsave'/>
+    <feature policy='require' name='hypervisor'/>
+    <feature policy='require' name='clflushopt'/>
+    <feature policy='disable' name='md-clear'/>
+    <feature policy='disable' name='fma'/>
+    <feature policy='disable' name='tsc-deadline'/>
+    <feature policy='disable' name='f16c'/>
+    <feature policy='disable' name='arat'/>
+    <feature policy='disable' name='bmi1'/>
+    <feature policy='disable' name='hle'/>
+    <feature policy='disable' name='smep'/>
+    <feature policy='disable' name='bmi2'/>
+    <feature policy='disable' name='erms'/>
+    <feature policy='disable' name='rtm'/>
+    <feature policy='disable' name='mpx'/>
+    <feature policy='disable' name='adx'/>
+    <feature policy='disable' name='smap'/>
+    <feature policy='disable' name='xsaveopt'/>
+    <feature policy='disable' name='xsavec'/>
+    <feature policy='disable' name='xgetbv1'/>
+    <feature policy='disable' name='invpcid'/>
+  </cpu>
+  <clock offset='utc'>
+    <timer name='rtc' tickpolicy='catchup'/>
+    <timer name='pit' tickpolicy='delay'/>
+    <timer name='hpet' present='no'/>
+  </clock>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>destroy</on_crash>
+  <pm>
+    <suspend-to-mem enabled='no'/>
+    <suspend-to-disk enabled='no'/>
+  </pm>
+  <devices>
+    <emulator>/usr/libexec/qemu-kvm</emulator>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2'/>
+      <source file='/disk1/kvm-vms/centos71/centos71-root.qcow2'/>
+      <backingStore/>
+      <target dev='vda' bus='virtio'/>
+      <alias name='virtio-disk0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x07' function='0x0'/>
+    </disk>
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='/disk1/kvm-vms/centos71/centos71-seed.iso'/>
+      <backingStore/>
+      <target dev='hda' bus='ide'/>
+      <readonly/>
+      <alias name='ide0-0-0'/>
+      <address type='drive' controller='0' bus='0' target='0' unit='0'/>
+    </disk>
+    <controller type='usb' index='0' model='ich9-ehci1'>
+      <alias name='usb'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x05' function='0x7'/>
+    </controller>
+    <controller type='usb' index='0' model='ich9-uhci1'>
+      <alias name='usb'/>
+      <master startport='0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x05' function='0x0' multifunction='on'/>
+    </controller>
+    <controller type='usb' index='0' model='ich9-uhci2'>
+      <alias name='usb'/>
+      <master startport='2'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x05' function='0x1'/>
+    </controller>
+    <controller type='usb' index='0' model='ich9-uhci3'>
+      <alias name='usb'/>
+      <master startport='4'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x05' function='0x2'/>
+    </controller>
+    <controller type='pci' index='0' model='pci-root'>
+      <alias name='pci.0'/>
+    </controller>
+    <controller type='ide' index='0'>
+      <alias name='ide'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x01' function='0x1'/>
+    </controller>
+    <controller type='virtio-serial' index='0'>
+      <alias name='virtio-serial0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x06' function='0x0'/>
+    </controller>
+    <interface type='bridge'>
+      <mac address='52:54:00:39:1a:5e'/>
+      <source bridge='br10'/>
+      <target dev='vnet0'/>
+      <model type='virtio'/>
+      <alias name='net0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x0'/>
+    </interface>
+    <serial type='pty'>
+      <source path='/dev/pts/2'/>
+      <target type='isa-serial' port='0'>
+        <model name='isa-serial'/>
+      </target>
+      <alias name='serial0'/>
+    </serial>
+    <console type='pty' tty='/dev/pts/2'>
+      <source path='/dev/pts/2'/>
+      <target type='serial' port='0'/>
+      <alias name='serial0'/>
+    </console>
+    <channel type='unix'>
+      <source mode='bind' path='/var/lib/libvirt/qemu/channel/target/domain-2-centos71/org.qemu.guest_agent.0'/>
+      <target type='virtio' name='org.qemu.guest_agent.0' state='connected'/>
+      <alias name='channel0'/>
+      <address type='virtio-serial' controller='0' bus='0' port='1'/>
+    </channel>
+    <channel type='spicevmc'>
+      <target type='virtio' name='com.redhat.spice.0' state='disconnected'/>
+      <alias name='channel1'/>
+      <address type='virtio-serial' controller='0' bus='0' port='2'/>
+    </channel>
+    <input type='tablet' bus='usb'>
+      <alias name='input0'/>
+      <address type='usb' bus='0' port='1'/>
+    </input>
+    <input type='mouse' bus='ps2'>
+      <alias name='input1'/>
+    </input>
+    <input type='keyboard' bus='ps2'>
+      <alias name='input2'/>
+    </input>
+    <graphics type='spice' port='5900' autoport='yes' listen='127.0.0.1'>
+      <listen type='address' address='127.0.0.1'/>
+      <image compression='off'/>
+    </graphics>
+    <sound model='ich6'>
+      <alias name='sound0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x04' function='0x0'/>
+    </sound>
+    <video>
+      <model type='qxl' ram='65536' vram='65536' vgamem='16384' heads='1' primary='yes'/>
+      <alias name='video0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x02' function='0x0'/>
+    </video>
+    <redirdev bus='usb' type='spicevmc'>
+      <alias name='redir0'/>
+      <address type='usb' bus='0' port='2'/>
+    </redirdev>
+    <redirdev bus='usb' type='spicevmc'>
+      <alias name='redir1'/>
+      <address type='usb' bus='0' port='3'/>
+    </redirdev>
+    <memballoon model='virtio'>
+      <alias name='balloon0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x08' function='0x0'/>
+    </memballoon>
+  </devices>
+  <seclabel type='dynamic' model='selinux' relabel='yes'>
+    <label>system_u:system_r:svirt_t:s0:c411,c543</label>
+    <imagelabel>system_u:object_r:svirt_image_t:s0:c411,c543</imagelabel>
+  </seclabel>
+  <seclabel type='dynamic' model='dac' relabel='yes'>
+    <label>+107:+107</label>
+    <imagelabel>+107:+107</imagelabel>
+  </seclabel>
+</domain>
+
+===============================================================
+FAILED - CREATE VM - RUN VIRT-INSTALL --> WITH DEFAULT BRIDGE virbr0
+--> did not get IP properly - tried to change IP range to same as 
+===============================================================
+
+- INSTALL
+virt-install --import --name centos71 \
+--memory 256 --vcpus 1 --cpu host \
+--disk /disk1/kvm-vms/centos71/centos71-root.qcow2,format=qcow2,bus=virtio \
+--disk /disk1/kvm-vms/centos71/centos71-seed.iso,device=cdrom \
+#--network bridge=br10,model=virtio \
+--network bridge=virbr0,model=virtio \
+--os-type=linux \
+--os-variant=rhel7 \
+--noautoconsole \
+
+This will pop up a boot-screen with kernel options - similar to the machine boot we see in ready-machines.
+Then it gives a black login screen in that pop up with "login:"
+
+- VERIFY
+
+[root@kvm001 centos71]# virsh list
+ Id    Name                           State
+----------------------------------------------------
+ 5     centos71                       running
+
+
+[root@kvm001 centos71]# virsh net-dumpxml default
+(only the network portion is shown here)
+
+<network connections='1'>
+  <name>default</name>
+  <uuid>c6a48355-79e2-45c2-a79b-c11c4f53a5ae</uuid>
+  <forward mode='nat'>
+    <nat>
+      <port start='1024' end='65535'/>
+    </nat>
+  </forward>
+  <bridge name='virbr0' stp='on' delay='0'/>
+  <mac address='52:54:00:08:e8:f5'/>
+  <ip address='192.168.122.1' netmask='255.255.255.0'>
+    <dhcp>
+      <range start='192.168.122.2' end='192.168.122.254'/>
+    </dhcp>
+  </ip>
+</network>
+
+- NETWORK SEEMS TO NOT LIST THIS MACHINE
+Try this to fix: https://www.cyberciti.biz/faq/linux-kvm-libvirt-dnsmasq-dhcp-static-ip-address-configuration-for-guest-os/
+
+[root@kvm001 centos71]# virsh net-dhcp-leases default
+ Expiry Time          MAC address        Protocol  IP address                Hostname        Client ID or DUID
+-------------------------------------------------------------------------------------------------------------------
+
+Here is the network configuration for dnsmasq used by libvirtd:
+
+[root@kvm001 centos71]# ps -ef|grep dnsmasq
+nobody    8778     1  0 11:38 ?        00:00:00 /usr/sbin/dnsmasq --conf-file=/var/lib/libvirt/dnsmasq/default.conf --leasefile-ro --dhcp-script=/usr/libexec/libvirt_leaseshelper
+root      8779  8778  0 11:38 ?        00:00:00 /usr/sbin/dnsmasq --conf-file=/var/lib/libvirt/dnsmasq/default.conf --leasefile-ro --dhcp-script=/usr/libexec/libvirt_leaseshelper
+root     20005  5467  0 16:59 pts/0    00:00:00 grep --color=auto dnsmasq
+
+[root@kvm001 centos71]# cat /var/lib/libvirt/dnsmasq/default.conf 
+##WARNING:  THIS IS AN AUTO-GENERATED FILE. CHANGES TO IT ARE LIKELY TO BE
+##OVERWRITTEN AND LOST.  Changes to this configuration should be made using:
+##    virsh net-edit default
+## or other application using the libvirt API.
+##
+## dnsmasq conf file created by libvirt
+strict-order
+pid-file=/var/run/libvirt/network/default.pid
+except-interface=lo
+bind-dynamic
+interface=virbr0
+dhcp-range=192.168.122.2,192.168.122.254
+dhcp-no-override
+dhcp-authoritative
+dhcp-lease-max=253
+dhcp-hostsfile=/var/lib/libvirt/dnsmasq/default.hostsfile
+addn-hosts=/var/lib/libvirt/dnsmasq/default.addnhosts
+
+- EDIT DEFAULT NETWORK CONFIG (TO CHANGE IP ADDR SERVED BY DEFAULT BRIDGE virbr0)
+# virsh net-edit default
+
+EDIT IT TO: (matching with our initial intent of using br0 with 192.168.99.x same as Virtualbox network)
+<network>
+  <name>default</name>
+  <uuid>c6a48355-79e2-45c2-a79b-c11c4f53a5ae</uuid>
+  <forward mode='nat'/>
+  <bridge name='virbr0' stp='on' delay='0'/>
+  <mac address='52:54:00:08:e8:f5'/>
+  <ip address='192.168.99.3' netmask='255.255.255.0'>
+    <dhcp>
+      <range start='192.168.99.81' end='192.168.99.99'/>
+    </dhcp>
+  </ip>
+</network>
+
+INITIAL (before edit):
+<network>
+  <name>default</name>
+  <uuid>c6a48355-79e2-45c2-a79b-c11c4f53a5ae</uuid>
+  <forward mode='nat'/>
+  <bridge name='virbr0' stp='on' delay='0'/>
+  <mac address='52:54:00:08:e8:f5'/>
+  <ip address='192.168.122.1' netmask='255.255.255.0'>
+    <dhcp>
+      <range start='192.168.122.2' end='192.168.122.254'/>
+    </dhcp>
+  </ip>
+</network>
+
+Remove the br0 bridge created earlier, using nmtui
+
+# virsh net-destroy default
+# virsh net-start default
+--> THIS MAY GIVE ERROR that default is used by another nic - like enp0s8
+--> Then, down enp0s8 and start net-start and then up enp0s8
+    [root@kvm001 centos71]# ifdown enp0s8
+    Device 'enp0s8' successfully disconnected.
+    [root@kvm001 centos71]# virsh net-start default
+    Network default started
+
+    [root@kvm001 centos71]# ifup enp0s8
+    Connection successfully activated (D-Bus active path: /org/freedesktop/NetworkManager/ActiveConnection/9)
+
+# ip a (now shows the new IP of the virbr0 interface - and also enp0s8 is fine again)
+3: enp0s8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group default qlen 1000
+    link/ether 08:00:27:f8:99:79 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.99.21/24 brd 192.168.99.255 scope global noprefixroute enp0s8
+       valid_lft forever preferred_lft forever
+    inet6 fe80::89e:dc3b:f129:8d7e/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+22: virbr0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default qlen 1000
+    link/ether 52:54:00:08:e8:f5 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.99.3/24 brd 192.168.99.255 scope global virbr0
+       valid_lft forever preferred_lft forever
+23: virbr0-nic: <BROADCAST,MULTICAST> mtu 1500 qdisc pfifo_fast master virbr0 state DOWN group default qlen 1000
+    link/ether 52:54:00:08:e8:f5 brd ff:ff:ff:ff:ff:ff
+
+However, from laptop the Vbox-VM IP and virbr0 ip were not pingable
+- restarted the vbox-vm and that fixed the issue
+ping 192.168.99.3 -->  bridge virbr0
+ping 192.168.99.21 -->  vbox vm enp0s8
+
+========================
+EXAMPLES
+========================
+
+-------------------------
+VIRT INSTALL
+-------------------------
+virt-install \
+  --name=$vm_name \
+  --ram=$MEM \
+  --vcpus=$CPU \
+  --disk path=${rootdisk_path},format=qcow2 \
+  --disk path=${dockerdisk_path},format=qcow2 \
+  --disk path=${etcddisk_path},format=qcow2 \
+  --disk path=${certsdisk_path},format=qcow2 \
+  --disk path=${injectfiles_path},format=RAW \
+  --disk path=${shareddisk_path},format=RAW \
+  --disk path=${persistent_disk_path},format=qcow2 \
+  --disk path=${seed_path},device=cdrom \
+  --network bridge=br10,model=virtio \
+  --network bridge=br10,model=virtio \
+  --os-type=linux \
+  --os-variant rhel7 \
+  --nographics \
+  --import
+
+============================
+ISSUES
+============================
+
+-------------------------------------
+virsh dhcp-net-leases shows empty
+-------------------------------------
+Reason: Maybe you did not copy the original template-qcow2 onto the VM qcow2 when you strated virt-install
+Fix: Copy the template-qcow2 onto the vm-qcow2 and then do virt-install
+
+Look for messages like these in /var/log/messages DHCPACK:
+[root@kvm001 centos71]# tail -f /var/log/messages
+Feb 24 21:30:39 kvm001 systemd: Started Virtual Machine and Container Registration Service.
+Feb 24 21:30:39 kvm001 systemd: Started Virtual Machine qemu-3-centos71.
+Feb 24 21:30:39 kvm001 systemd-machined: New machine qemu-3-centos71.
+Feb 24 21:30:39 kvm001 kvm: 1 guest now active
+Feb 24 21:30:39 kvm001 avahi-daemon[2973]: Registering new address record for fe80::fc54:ff:fe0d:9124 on vnet0.*.
+Feb 24 21:30:40 kvm001 kernel: br20: port 2(vnet0) entered learning state
+Feb 24 21:30:42 kvm001 kernel: br20: port 2(vnet0) entered forwarding state
+Feb 24 21:30:42 kvm001 kernel: br20: topology change detected, propagating
+Feb 24 21:30:42 kvm001 kernel: IPv6: ADDRCONF(NETDEV_CHANGE): br20: link becomes ready
+Feb 24 21:30:42 kvm001 NetworkManager[3090]: <info>  [1582560042.5174] device (br20): carrier: link connected
+Feb 24 21:32:53 kvm001 dnsmasq-dhcp[6133]: DHCPDISCOVER(br20) 52:54:00:0d:91:24
+Feb 24 21:32:53 kvm001 dnsmasq-dhcp[6133]: DHCPOFFER(br20) 192.168.99.97 52:54:00:0d:91:24
+Feb 24 21:32:53 kvm001 dnsmasq-dhcp[6133]: DHCPREQUEST(br20) 192.168.99.97 52:54:00:0d:91:24
+Feb 24 21:32:53 kvm001 dnsmasq-dhcp[6133]: DHCPACK(br20) 192.168.99.97 52:54:00:0d:91:24 centos71
+Feb 24 21:34:08 kvm001 journal: g_simple_action_set_enabled: assertion 'G_IS_SIMPLE_ACTION (simple)' failed
+Feb 24 21:34:28 kvm001 dnsmasq-dhcp[6133]: DHCPREQUEST(br20) 192.168.99.97 52:54:00:0d:91:24
+Feb 24 21:34:28 kvm001 dnsmasq-dhcp[6133]: DHCPACK(br20) 192.168.99.97 52:54:00:0d:91:24 centos71
+
+Other files to look:
+# cat /var/lib/libvirt/dnsmasq/br20.status
+[
+  {
+    "ip-address": "192.168.99.97",
+    "mac-address": "52:54:00:0d:91:24",
+    "hostname": "centos71",
+    "expiry-time": 1582563868
+  }
+]
+
+
+
+[root@kvm001 ~]# cd /var/lib/libvirt
+[root@kvm001 libvirt]# ls -l dns*
+total 20
+-rw-r--r--. 1 root root   0 Feb 24 21:17 br20.addnhosts
+-rw-------. 1 root root 570 Feb 24 21:17 br20.conf
+-rw-r--r--. 1 root root   0 Feb 24 21:17 br20.hostsfile
+-rw-r--r--. 1 root root 145 Feb 24 21:34 br20.status
+-rw-r--r--. 1 root root   0 Feb 24 21:02 default.addnhosts
+-rw-------. 1 root root 588 Feb 24 21:02 default.conf
+-rw-r--r--. 1 root root   0 Feb 24 21:02 default.hostsfile
+-rw-r--r--. 1 root root   5 Feb 21 15:20 virbr0.macs
+-rw-r--r--. 1 root root   5 Feb 21 16:09 virbr0.status
+[root@kvm001 libvirt]# cat dnsmasq/def*conf
+##WARNING:  THIS IS AN AUTO-GENERATED FILE. CHANGES TO IT ARE LIKELY TO BE
+##OVERWRITTEN AND LOST.  Changes to this configuration should be made using:
+##    virsh net-edit default
+## or other application using the libvirt API.
+##
+## dnsmasq conf file created by libvirt
+strict-order
+pid-file=/var/run/libvirt/network/default.pid
+except-interface=lo
+bind-dynamic
+interface=virbr0
+dhcp-range=192.168.122.2,192.168.122.254
+dhcp-no-override
+dhcp-authoritative
+dhcp-lease-max=253
+dhcp-hostsfile=/var/lib/libvirt/dnsmasq/default.hostsfile
+addn-hosts=/var/lib/libvirt/dnsmasq/default.addnhosts

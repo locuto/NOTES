@@ -1,0 +1,165 @@
+================================================
+REMOTE AUDIT LOGGING USIND AUDISP AND RSYSLOG (in the absence of agents like Auditbeat)
+================================================
+
+https://luppeng.wordpress.com/2016/08/06/setting-up-centralized-logging-with-auditd/
+https://www.server-world.info/en/note?os=CentOS_7&p=audit&f=2
+
+================================================================================================
+IMPORTANT: GO THROGUH THE FOLLOWING TO ENSURE ALL RECOREDS ARE FORWARDED
+================================================================================================
+https://manpages.debian.org/testing/audispd-plugins/audisp-remote.conf.5.en.html
+
+==================
+TBD
+==================
+1. NOLOG seems to prevent re-establish connection with central server
+2. Restart of auditd and re-establish connection with central server - after central server auditd restarts
+
+================================================
+CONFIGURATION 
+================================================
+
+- CENTRAL SERVER
+# vi /etc/audit/auditd.conf
+
+Uncomment the line that says “tcp_listen_port = “ and enter the chosen port for remote logging to take place on.
+
+tcp_listen_port = 60
+Lastly, save the edits and restart auditd
+
+# service auditd restart
+
+[root@rsyslogsvr audit]# netstat -anp |grep auditd
+tcp6       0      0 :::60                   :::*                    LISTEN      11739/auditd        
+tcp6       0      0 192.168.0.210:60        192.168.0.211:14917     ESTABLISHED 11739/auditd        
+unix  3      [ ]         STREAM     CONNECTED     54328    11739/auditd         
+unix  2      [ ]         DGRAM                    54330    11739/auditd         
+unix  3      [ ]         STREAM     CONNECTED     54331    11739/auditd         
+unix  3      [ ]         STREAM     CONNECTED     54329    11739/auditd         
+unix  3      [ ]         STREAM     CONNECTED     54332    11739/auditd   
+
+- CLIENT
+
+# vi /etc/audisp/audisp-remote.conf
+…
+remote_server = <IP Address of Centralized Log Server>
+port = 60
+Next, enable the remote logging plugin:
+
+# vi /etc/audisp/plugins.d/au-remote.conf
+…
+active = yes
+…
+
+Optional (however, keeping this as RAW did not seem to establish remote connection
+#  vi /etc/audit/auditd.conf
+…
+log_format = NOLOG
+…
+Lastly, restart auditd to enable the changes.
+
+$ sudo service auditd restart
+
+[root@elk1 audit]# netstat -anp |grep audisp-remote
+tcp        0      0 192.168.0.211:14917     192.168.0.210:60        ESTABLISHED 12050/audisp-remote 
+
+- VERIFY
+In the central server's /var/log/audit/audit.log the audit records of the client should appear.
+--> with identifier 'node=...'
+
+Example:
+[root@rsyslogsvr audit]# grep bbb111 audit.log
+node=elk1 type=EXECVE msg=audit(1542357066.659:6402): argc=2 a0="useradd" a1="bbb111"
+node=elk1 type=ADD_GROUP msg=audit(1542357066.662:6420): pid=11494 uid=0 auid=0 ses=1 msg='op=add-group acct="bbb111" exe="/usr/sbin/useradd" hostname=elk1 addr=? terminal=pts/0 res=success'
+node=elk1 type=EXECVE msg=audit(1542357070.068:6455): argc=2 a0="userdel" a1="bbb111"
+node=elk1 type=DEL_GROUP msg=audit(1542357070.092:6474): pid=11508 uid=0 auid=0 ses=1 msg='op=delete-group grp="bbb111" acct="bbb111" exe="/usr/sbin/userdel" hostname=elk1 addr=? terminal=pts/0 res=success'
+node=elk1 type=GRP_MGMT msg=audit(1542357070.092:6475): pid=11508 uid=0 auid=0 ses=1 msg='op=delete-shadow-group grp="bbb111" acct="bbb111" exe="/usr/sbin/userdel" hostname=elk1 addr=? terminal=pts/0 res=success'
+
+
+
+===================================
+-- MORE DETAILED CONFIGURATION --
+===================================
+FILE1: /etc/audisp/audisp-remote.conf
+https://manpages.debian.org/testing/audispd-plugins/audisp-remote.conf.5.en.html
+
+remote_server = 192.168.0.210
+port = 60
+
+queue_file = /var/spool/audit/remote.log
+#mode = immediate --> THIS IS DEFAULT. HOWEVER, THIS WILL LOSE RECORDS IF NOT CONNECTED TO REMOTE LOGGER
+mode = forward --> THIS WILL SPOOL RECORDS INTO queue_file IF REMOTE CONNECTION IS DOWN
+queue_depth = 2048 --> 2048 is default - how many records can be buffered to disk or in memory 
+                                         before considering it to be a failure sending.
+
+#heartbeat_timeout = 0 --> THIS '0' WILL NOT SEND HEARTBEAT TO SERVER
+heartbeat_timeout = 5  --> THIS WILL SEND HEARTBEAT TO SERVER EVERY X SECONDS
+
+================================================
+TEST CASES
+================================================
+
+-------------------------------------------------------------------------------------------------
+WILL 'NOLOG' IN AUDITD.CONF OF CLIENTS BE OK - WILL IT STILL SEND RECORDS TO CENTRAL SERVER
+-------------------------------------------------------------------------------------------------
+It seemed to work
+--> But, upon trying again, re-establishment of connection with central server failed - netstat showed no ESTABLISHED
+--> only after making it RAW from NOLOG in client and restartinf auditd in client machine it was ESTABLISHED in central server
+
+---------------------------------------------------------------
+RE-ESTABLISH CONNECTION WHEN REMOTE SERVER IS DOWN FOR SOMETIME
+---------------------------------------------------------------
+Desired result:  Audit records are queued up locally and then later sent out to central server once it is up
+
+TBD - is this the queue file in the local servers?
+audisp-remote.conf:queue_file = /var/spool/audit/remote.log
+
+NOTES:
+Looks like once the central server auditd restarts, then remote servers do not seem to automatically reconnect.
+- netstat -anp does not show 'ESTABLISHED'
+
+- FIRST PART - JUST REESTABLISH CONNECTION
+[root@rsyslogsvr audit]# netstat -nap |grep auditd
+tcp6       0      0 :::60                   :::*                    LISTEN      7123/auditd         
+tcp6       0      0 192.168.0.210:60        192.168.0.211:13772     ESTABLISHED 7123/auditd         
+unix  2      [ ]         DGRAM                    46458    7123/auditd          
+unix  3      [ ]         STREAM     CONNECTED     46456    7123/auditd          
+unix  3      [ ]         STREAM     CONNECTED     46457    7123/auditd          
+unix  3      [ ]         STREAM     CONNECTED     46460    7123/auditd          
+unix  3      [ ]         STREAM     CONNECTED     46459    7123/auditd          
+
+[root@rsyslogsvr audit]# service auditd restart
+Stopping logging:                                          [  OK  ]
+Redirecting start to /bin/systemctl start auditd.service
+[root@rsyslogsvr audit]# netstat -nap |grep auditd
+tcp6       0      0 :::60                   :::*                    LISTEN      7490/auditd         
+unix  3      [ ]         STREAM     CONNECTED     47496    7490/auditd          
+unix  3      [ ]         STREAM     CONNECTED     47500    7490/auditd          
+unix  2      [ ]         DGRAM                    47498    7490/auditd          
+unix  3      [ ]         STREAM     CONNECTED     47497    7490/auditd          
+unix  3      [ ]         STREAM     CONNECTED     47499    7490/auditd 
+
+NOW - restart auditd in client to re-establish connection (TBD - how to do that automatically from client machine??)
+
+
+- SECOND PART
+Ensure that records are forwarded upon connection re-establishment
+
+Set this in the /etc/audisp/audisp-remote.conf
+(default is 'immediate')
+mode = forward
+queue_file = /var/spool/audit/remote.log
+
+This will retain records in the queue_file and then forward once connection is established
+
+- THIRD PART
+Ensure re-establish happens without manual intervention of restarting auditd in client
+
+
+================================================
+TROUBLESHOOTING
+================================================
+In client machine /var/log/messages:
+Error - plugin (/etc/audisp/plugins.d/au-remote.conf) is active but no path given
+

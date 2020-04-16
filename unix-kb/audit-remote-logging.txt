@@ -1,0 +1,87 @@
+====================================
+AUDIT REMOTE LOGGING
+====================================
+
+================
+POSSIBLE METHODS
+================
+
+Method 1: Rsyslog remote logging --> first goes to local rsyslog which possibly can send it to a remote logger
+
+Method 2: Using audispd (or audisp-remote??)
+
+================
+INFO
+================
+Using rsyslog:
+https://serverfault.com/questions/202044/sending-audit-logs-to-syslog-server
+https://www.thegeekdiary.com/how-to-send-audit-logs-to-remote-rsyslog-server-in-centos-rhel-67/
+
+Multiple files:
+https://www.rsyslog.com/using-the-text-file-input-module/
+
+Using audispd:
+https://luppeng.wordpress.com/2016/08/06/setting-up-centralized-logging-with-auditd/
+https://www.server-world.info/en/note?os=CentOS_7&p=audit&f=2
+
+================
+USING RSYSLOG - to be tested
+================
+Using rsyslog:
+https://serverfault.com/questions/202044/sending-audit-logs-to-syslog-server
+
+---------------------------------------
+On the sending client (rsyslog.conf)
+---------------------------------------
+# auditd audit.log  
+$InputFileName /var/log/audit/audit.log  
+$InputFileTag tag_audit_log:  
+$InputFileStateFile audit_log  
+$InputFileSeverity info  
+$InputFileFacility local6  
+$InputRunFileMonitor
+Note that the imfile module will need to have been loaded previously in the rsyslog configuration. 
+This is the line responsible for that:
+
+$ModLoad imfile
+So check if it's in your rsyslog.conf file. 
+If it's not there, add it under the ### MODULES ### section to enable this module; 
+otherwise, the above configuration for auditd logging will not work.
+
+------------------------------------------
+On the receiving server (rsyslog.conf)
+------------------------------------------
+
+$template HostAudit, "/var/log/rsyslog/%HOSTNAME%/audit_log"  
+local6.* ?HostAudit
+
+Restart the service (service rsyslog restart) on both hosts and you should begin receiving auditd messages.
+
+
+---------
+verify 1
+---------
+Audit records of client were produced on the remote-server in this file:
+/var/log/rsyslog/%HOSTNAME%/audit_log
+
+For the 'elk1' server:
+/var/log/rsyslog/elk1/audit_log
+
+Oct  9 11:10:07 elk1 tag_audit_log: type=USER_START msg=audit(1539063601.354:418): pid=16367 uid=0 auid=0 ses=37 msg='op=PAM:session_open grantors=pam_loginuid,pam_keyinit,pam_limits,pam_systemd acct="root" exe="/usr/sbin/crond" hostname=? addr=? terminal=cron res=success'
+Oct  9 11:10:07 elk1 tag_audit_log: type=CRED_REFR msg=audit(1539063601.354:419): pid=16367 uid=0 auid=0 ses=37 msg='op=PAM:setcred grantors=pam_env,pam_unix acct="root" exe="/usr/sbin/crond" hostname=? addr=? terminal=cron res=success'
+Oct  9 11:10:07 elk1 tag_audit_log: type=CRED_DISP msg=audit(1539063601.361:420): pid=16367 uid=0 auid=0 ses=37 msg='op=PAM:setcred grantors=pam_env,pam_unix acct="root" exe="/usr/sbin/crond" hostname=? addr=? terminal=cron res=success'
+Oct  9 11:10:07 elk1 tag_audit_log: type=USER_END msg=audit(1539063601.361:421): pid=16367 uid=0 auid=0 ses=37 msg='op=PAM:session_close grantors=pam_loginuid,pam_keyinit,pam_limits,pam_systemd acct="root" exe="/usr/sbin/crond" hostname=? addr=? terminal=cron res=success'
+
+
+---------
+verify 2
+---------
+
+On receiving server - in /var/log/messages, you will see servername, and tag 'tag_audit_log' messages
+
+Oct  9 11:10:07 elk1 tag_audit_log: type=LOGIN msg=audit(1539063601.346:417): pid=16367 uid=0 old-auid=4294967295 auid=0 old-ses=4294967295 ses=37 res=1
+Oct  9 11:10:07 elk1 tag_audit_log: type=USER_START msg=audit(1539063601.354:418): pid=16367 uid=0 auid=0 ses=37 msg='op=PAM:session_open grantors=pam_loginuid,pam_keyinit,pam_limits,pam_systemd acct="root" exe="/usr/sbin/crond" hostname=? addr=? terminal=cron res=success'
+Oct  9 11:10:07 elk1 tag_audit_log: type=CRED_REFR msg=audit(1539063601.354:419): pid=16367 uid=0 auid=0 ses=37 msg='op=PAM:setcred grantors=pam_env,pam_unix acct="root" exe="/usr/sbin/crond" hostname=? addr=? terminal=cron res=success'
+Oct  9 11:10:07 elk1 tag_audit_log: type=CRED_DISP msg=audit(1539063601.361:420): pid=16367 uid=0 auid=0 ses=37 msg='op=PAM:setcred grantors=pam_env,pam_unix acct="root" exe="/usr/sbin/crond" hostname=? addr=? terminal=cron res=success'
+Oct  9 11:10:07 elk1 tag_audit_log: type=USER_END msg=audit(1539063601.361:421): pid=16367 uid=0 auid=0 ses=37 msg='op=PAM:session_close grantors=pam_loginuid,pam_keyinit,pam_limits,pam_systemd acct="root" exe="/usr/sbin/crond" hostname=? addr=? terminal=cron res=success'
+

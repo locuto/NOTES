@@ -2,6 +2,8 @@
 ANSIBLE INSTALL CONFIG
 ======================
 
+TO UPGRADE ANSIBLE:  pip install ansible --upgrade
+
 TODO:
 ansible.cfg
 key-file in yml
@@ -21,11 +23,16 @@ MANAGED NODE --> ansible access this machine and runs playbooks - however, node 
 CONTROL MACHINE - MAC
 ======================
 Install Python (2.6+ or 3+)
-$ pip install ansible
+
+Install Ansible (use --user option if it errors out)
+$ pip install ansible --user
 $ which ansible
 /usr/local/bin/ansible
 
 Alternatively download tarball and unzip and build:  http://releases.ansible.com/ansible/
+
+-- TO UPGRADE ANSIBLE TO A NEWER VERSION
+$ pip install --upgrade ansible
 
 ======================
 MANAGED NODE - Ubuntu or other Linux

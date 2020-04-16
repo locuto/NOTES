@@ -1,0 +1,169 @@
+=====================================
+SPRING GETTING STARTED ECLIPSE MAVEN
+=====================================
+
+==================
+CREATE THE PROJECT
+==================
+New project --> Maven Project
+Default workspace
+Archetype = maven-archetype-quickstart
+
+Group = mycom.example.spring
+Artifact = ComMycomSpring-SpringRestModel
+Package = mycom.example.spring
+
+Packaging = jar
+
+============
+POM.XML
+============
+Add these:
+
+    <dependency>
+       <groupId>org.springframework.boot</groupId>
+       <artifactId>spring-boot-maven-plugin</artifactId>
+       <version>1.5.2.RELEASE</version>
+    </dependency>
+    
+    <dependency>
+       <groupId>org.springframework.boot</groupId>
+       <artifactId>spring-boot-starter-web</artifactId>
+       <version>1.5.2.RELEASE</version>
+    </dependency>
+    
+    <dependency>
+       <groupId>org.springframework.boot</groupId>
+       <artifactId>spring-boot-starter-test</artifactId>
+       <version>1.5.2.RELEASE</version>
+    </dependency>
+
+==============================
+MAIN PROGRAM
+==============================
+
+package mycom.example.spring;
+  
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class Application {
+
+    public static void main(String[] args) {
+        SpringApplication.run(Application.class, args);
+    }
+}
+
+==============================
+MODEL
+==============================
+
+public class Greeting {
+
+    private final long id;
+    private final String content;
+
+    public Greeting(long id, String content) {
+        this.id = id;
+        this.content = content;
+    }
+
+    public long getId() {
+        return id;
+    }
+
+    public String getContent() {
+        return content;
+    }
+}
+
+==============================
+CONTROLLERS
+==============================
+
+package mycom.example.spring;
+  
+import java.util.concurrent.atomic.AtomicLong;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class GreetingController {
+
+    private static final String template = "Hello, %s!";
+    private final AtomicLong counter = new AtomicLong();
+
+    //alternative - @RequestMapping(method=RequestMethod.GET, value={"/greeting","/Greeting"})
+    @RequestMapping("/greeting")
+    public Greeting greeting(@RequestParam(value="name", defaultValue="World") String name) {
+        return new Greeting(counter.incrementAndGet(),
+                            String.format(template, name));
+    }
+}
+
+====================================
+BUILD
+====================================
+In Eclipse, go to the top of the tree of the project, 
+then, Run As --> Maven Install
+
+====================================
+RUN
+====================================
+In Eclipse, go to the top of the tree of the project, 
+then, Run As --> Java Application
+
+In the pop-up, choose the class --> in this case mycom.example.spring.Application
+
+That will show messages in the bottom console, ending up with:
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+ :: Spring Boot ::        (v1.5.2.RELEASE)
+ 
+- ALTERNATIVELY
+in src/main/java find Application.java, expand it to view its class, right-click -> run as -> java application
+
+====================================
+ACCESS URLs
+====================================
+
+http://localhost:8080/greeting
+
+Output:
+{"id":1,"content":"Hello, World!"}
+ 
+
+========= TBD SOMETIME ===========================
+====================================
+IF PACKAGING AS WAR - TBD TBD TBD
+====================================
+
+package com.example.spring;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.web.support.SpringBootServletInitializer;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+
+
+// Note "extends SpringBootServletInitializer" is needed to package as war
+@SpringBootApplication
+public class Application extends SpringBootServletInitializer {
+	
+	// Override necessary to make it a deployable war
+	@Override
+	protected SpringApplicationBuilder configure(SpringApplicationBuilder application) {
+	    return application.sources(Application.class);
+	}
+
+    public static void main(String[] args) {
+        SpringApplication.run(Application.class, args);
+    }
+}
+

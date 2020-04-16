@@ -1,0 +1,111 @@
+#cloud-config
+write_files:
+  -    encoding: b64
+       content: c29tZXBhc3N3b3JkCg==
+       path: /tmp/passwd.somepassword
+       permissions: '0644'
+
+runcmd:
+  - echo "INFO - INSIDE USER-DATA"
+  - echo "nameserver 110.201.140.215" > /etc/resolv.conf
+  - echo "nameserver 110.201.140.215" >> /etc/resolv.conf
+  # note - somehow ENV1 and ENV2 showed up empty
+  - ENV1=value1 ENV2=value2 echo "[cloud init] $ENV1 $ENV2" >> /var/log/messages
+  - echo "INFO - Running the cloud-init.sh script"
+  - chmod +x /opt/cloud-init/cloud-init.sh
+  - /opt/cloud-init/cloud-init.sh
+
+#  - echo "Jkl@Rmps1#" | passwd --stdin root
+#  - yum -y remove cloud-init
+
+ssh_pwauth: True
+
+# preserve_hostname: false is required to get the hostname changed by hostname: directive
+preserve_hostname: false
+hostname: gm1
+fqdn: gm1.gm.com
+
+#password: Password1
+#chpasswd: { expire: False }
+
+# Note: changing root password here will still enforce a password change when first logged on as root
+chpasswd:
+    list:
+        #- root:root123
+        #- user2:RANDOM
+        #- user3:password3
+        #- user4:R
+        #- user4:$6$rL..$ej..
+
+# add groups and users
+# note: k8s group with 2 users, cloud-users with no users
+groups:
+  - k8s: [k8suser,k8sadmin]
+  - cloud-users
+
+users:
+  - default
+  - name: k8suser
+    gecos: k8s user unprivileged
+    primary_group: k8s
+    groups: users
+    #selinux_user: staff_u
+    expiredate: 2032-09-01
+    #ssh_import_id: foobar
+    lock_passwd: false
+    passwd: $6$33gLGi4IqAe4qZ6U$Dpx.jqTk8/PMUW39gSyd9R0ZnvwmFIYAEFnlnAiCxVI0pncwEVDnBFQ58CxBHggAnNq0LjKwvd7kABiAyb46k.
+  - name: k8sadmin
+    gecos: k8s admin user privileged
+    primary_group: k8s
+    groups: users
+    #selinux_user: staff_u
+    expiredate: 2032-09-01
+    #ssh_import_id: foobar
+    lock_passwd: false
+    passwd: $6$33gLGi4IqAe4qZ6U$Dpx.jqTk8/PMUW39gSyd9R0ZnvwmFIYAEFnlnAiCxVI0pncwEVDnBFQ58CxBHggAnNq0LjKwvd7kABiAyb46k.
+  # USE DEFAULT_USER SECTION FOR CLOUD_USER
+  #- name: cloud-user
+  #  gecos: k8s admin user privileged
+  #  primary_group: k8s
+  #  groups: users
+  #  #selinux_user: staff_u
+  #  expiredate: 2032-09-01
+  #  #ssh_import_id: foobar
+  #  lock_passwd: false
+  #  passwd: $6$33gLGi4IqAe4qZ6U$Dpx.jqTk8/PMUW39gSyd9R0ZnvwmFIYAEFnlnAiCxVI0pncwEVDnBFQ58CxBHggAnNq0LjKwvd7kABiAyb46k.
+  #
+  # MORE EXAMPLE USERS
+  #- name: barfoo
+  #  gecos: Bar B. Foo
+  #  sudo: ALL=(ALL) NOPASSWD:ALL
+  #  groups: users, admin
+  #  ssh_import_id: None
+  #  lock_passwd: true
+  #  ssh_authorized_keys:
+  #    - <ssh pub key 1>
+  #    - <ssh pub key 2>
+  #- name: cloudy
+  # gecos: Magic Cloud App Daemon User
+  #  inactive: true
+  #  system: true
+  #- name: fizzbuzz
+  #  sudo: False
+  #  ssh_authorized_keys:
+  #    - <ssh pub key 1>
+  #    - <ssh pub key 2>
+  #- snapuser: joe@joeuser.io
+  #- name: nosshlogins
+  #  ssh_redirect_user: true
+
+system_info:
+   # Note: This default_user does not modify /etc/cloud/cloud.cfg - it only creates the user. Modify that file by other means if already exists
+   default_user:
+     name: cloud-user
+     #lock_passwd: true is the default
+     #lock_passwd: True
+     lock_passwd: false
+     passwd: $6$33gLGi4IqAe4qZ6U$Dpx.jqTk8/PMUW39gSyd9R0ZnvwmFIYAEFnlnAiCxVI0pncwEVDnBFQ58CxBHggAnNq0LjKwvd7kABiAyb46k.
+     gecos: CloudUser
+     groups: [adm, audio, cdrom, dialout, dip, floppy, netdev, plugdev, sudo, video]
+     sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+     shell: /bin/bash

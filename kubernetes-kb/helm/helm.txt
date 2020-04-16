@@ -1,0 +1,368 @@
+================
+HELM
+================
+
+https://docs.confluent.io/current/installation/installing_cp/cp-helm-charts/docs/index.html
+https://www.digitalocean.com/community/tutorials/how-to-install-software-on-kubernetes-clusters-with-the-helm-package-manager
+https://docs.bitnami.com/kubernetes/how-to/create-your-first-helm-chart/
+https://www.aquasec.com/wiki/display/containers/Kubernetes+Helm+101
+https://www.mirantis.com/blog/install-kubernetes-apps-helm/
+
+Official docs:
+https://helm.sh/
+--> https://helm.sh/docs/developing_charts/#charts
+
+Helm apps:
+https://hub.helm.sh/
+
+
+
+------------------
+INSTALL KUBECTL
+------------------
+https://kubernetes.io/docs/tasks/tools/install-kubectl/#install-kubectl
+
+cat <<EOF > /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+EOF
+
+yum install -y kubectl
+
+This installs into /usr/local/bin/kubectl
+
+-------------------------
+INSTLL HELM - MAC BREW
+-------------------------
+NOTE: Better use tar-untar method in the next section
+https://discourse.brew.sh/t/install-specific-version-of-kubernetes-helm/6342/4
+
+- INSTALL
+NOTE: The @2 seems like version
+brew install helm@2
+
+This will install into:
+/usr/local/opt/helm@2
+/usr/local/opt/helm@2/bin/helm
+
+$ ls -ld /usr/local/opt/helm*
+lrwxr-xr-x  1 username  admin  20 Feb  3 14:10 /usr/local/opt/helm -> ../Cellar/helm/3.0.3
+lrwxr-xr-x  1 username  admin  23 Mar 31 17:33 /usr/local/opt/helm@2 -> ../Cellar/helm@2/2.16.5
+lrwxr-xr-x  1 username  admin  20 Feb  3 14:10 /usr/local/opt/helm@3 -> ../Cellar/helm/3.0.3
+
+- LINK TO /usr/local/bin/helm
+$ brew unlink helm
+(this will remove /usr/local/bin/helm which is a symlink to ../Cellar/helm@3 ....)
+
+brew link --force helm@2 
+which helm --> will show /usr/local/bin/helm
+
+helm version
+Client: &version.Version{SemVer:"v2.16.5", GitCommit:"89bd14c1541fa93a09492010030fd3699ca65a97", GitTreeState:"clean"}
+Server: &version.Version{SemVer:"v2.12.3", GitCommit:"eecf22f77df5f65c823aacd2dbd30ae6c65f186e", GitTreeState:"clean"}
+
+-------------------------
+INSTLL HELM - TAR-UNTAR
+-------------------------
+
+- INSTALL
+https://docs.helm.sh/using_helm/#installing-helm
+https://docs.helm.sh/using_helm/#quickstart-guide
+--> https://github.com/helm/helm/releases
+
+https://docs.confluent.io/current/installation/installing_cp/cp-helm-charts/docs/index.html
+
+Download tar.gz file from https://github.com/helm/helm/releases
+Unzip it - tar xfvzp helm-v2.12.3-linux-amd64.tar.gz
+It zips into a folder like linux-amd64
+Copy helm and tiller from that folder to /usr/local/bin (or, keep them there itself and add the folder to PATH)
+
+- INITIALIZE
+https://docs.helm.sh/using_helm/#initialize-helm-and-install-tiller
+
+-- Setup ~/.kube/config if not done already
+Using kubectl set current context/cluster
+Verify using kubectl get nodes/pods etc that you are in the right context/cluster
+
+-- Then, initialize helm
+# helm init
+--> This will install 'tiller' pod on the cluster and does some other initialization work
+--> It will also create ~/.helm on where you run helm from (like your laptop)
+
+-- The tiller pod on cluster (created on a worker node)
+# kubectl get pods -o wide --all-namespaces |grep -i tiller
+kube-system   tiller-deploy-69ffbf64bc-4ljds             0/1     ContainerCreating   0          8s     <none>            kc01   <none>           <none>
+
+-- To avoid deployment errors do the following:
+per https://apassionatechie.wordpress.com/tag/service/page/2/
+NOTE:  THIS WORKED (in addition, the pods CIDR should also be different from vm IP range)
+
+kubectl create serviceaccount --namespace kube-system tiller
+kubectl create clusterrolebinding tiller-cluster-rule --clusterrole=cluster-admin --serviceaccount=kube-system:tiller
+kubectl patch deploy --namespace kube-system tiller-deploy -p '{"spec":{"template":{"spec":{"serviceAccount":"tiller"}}}}'      
+helm init --service-account tiller --upgrade
+
+-----------------------------------------------------------
+CREATE A CHART LOCALLY AND INSTALL IT ON THE CLUSTER
+-----------------------------------------------------------
+https://docs.bitnami.com/kubernetes/how-to/create-your-first-helm-chart/
+
+- Create
+# helm create nginx2
+--> This creates a standard helm folder with default charts - which in turn has nginx itself as deployment!
+--> Modify as needed (see later in this docs for modified files)
+
+- Install - dry run
+[root@kubeclient helm]# helm install --dry-run --debug ./nginx2 --set service.type=NodePort
+[debug] Created tunnel using local port: '10694'
+
+[debug] SERVER: "127.0.0.1:10694"
+
+[debug] Original chart version: ""
+[debug] CHART PATH: /root/kube/helm/nginx2
+
+NAME:   virtuous-llama
+REVISION: 1
+RELEASED: Tue Feb 12 18:07:25 2019
+CHART: nginx2-0.1.0
+USER-SUPPLIED VALUES:
+service:
+  type: NodePort
+
+COMPUTED VALUES:
+affinity: {}
+fullnameOverride: ""
+image:
+  pullPolicy: IfNotPresent
+  repository: nginx
+  tag: stable
+ingress:
+  annotations: {}
+  enabled: false
+  hosts:
+  - chart-example.local
+  paths: []
+  tls: []
+name: nginx2
+nameOverride: ""
+nodeSelector: {}
+replicaCount: 2
+resources: {}
+service:
+  port: 80
+  type: NodePort
+tolerations: []
+
+HOOKS:
+---
+# virtuous-llama-nginx2-test-connection
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "virtuous-llama-nginx2-test-connection"
+  labels:
+    app.kubernetes.io/name: nginx2
+    helm.sh/chart: nginx2-0.1.0
+    app.kubernetes.io/instance: virtuous-llama
+    app.kubernetes.io/managed-by: Tiller
+  annotations:
+    "helm.sh/hook": test-success
+spec:
+  containers:
+    - name: wget
+      image: busybox
+      command: ['wget']
+      args:  ['virtuous-llama-nginx2:80']
+  restartPolicy: Never
+MANIFEST:
+
+---
+# Source: nginx2/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: virtuous-llama-nginx2
+  labels:
+    app.kubernetes.io/name: nginx2
+    helm.sh/chart: nginx2-0.1.0
+    app.kubernetes.io/instance: virtuous-llama
+    app.kubernetes.io/managed-by: Tiller
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: nginx2
+    app.kubernetes.io/instance: virtuous-llama
+---
+# Source: nginx2/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: virtuous-llama-nginx2
+  labels:
+    app.kubernetes.io/name: nginx2
+    helm.sh/chart: nginx2-0.1.0
+    app.kubernetes.io/instance: virtuous-llama
+    app.kubernetes.io/managed-by: Tiller
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nginx2
+      app.kubernetes.io/instance: virtuous-llama
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nginx2
+        app.kubernetes.io/instance: virtuous-llama
+    spec:
+      containers:
+        - name: nginx2
+          image: "nginx:stable"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+          resources:
+            {}
+[root@kubeclient helm]# 
+
+- Install - actual install
+
+[root@kubeclient helm]# helm install  ./nginx2 --set service.type=NodePort
+NAME:   wise-elk
+LAST DEPLOYED: Tue Feb 12 18:19:07 2019
+NAMESPACE: default
+STATUS: DEPLOYED
+
+RESOURCES:
+==> v1/Service
+NAME             TYPE      CLUSTER-IP     EXTERNAL-IP  PORT(S)       AGE
+wise-elk-nginx2  NodePort  10.111.45.210  <none>       80:31489/TCP  0s
+
+==> v1/Deployment
+NAME             DESIRED  CURRENT  UP-TO-DATE  AVAILABLE  AGE
+wise-elk-nginx2  2        0        0           0          0s
+
+==> v1/Pod(related)
+NAME                              READY  STATUS   RESTARTS  AGE
+wise-elk-nginx2-545c89bd9f-7qhwt  0/1    Pending  0         0s
+wise-elk-nginx2-545c89bd9f-bf7v2  0/1    Pending  0         0s
+
+NOTES:
+1. Get the application URL by running these commands:
+  export NODE_PORT=$(kubectl get --namespace default -o jsonpath="{.spec.ports[0].nodePort}" services wise-elk-nginx2)
+  export NODE_IP=$(kubectl get nodes --namespace default -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+
+- Verify
+[root@kubeclient helm]# kubectl get pods -o wide --all-namespaces |grep -i nginx
+default       wise-elk-nginx2-545c89bd9f-7qhwt           1/1     Running   0          56s    192.168.134.134   kc01   <none>           <none>
+default       wise-elk-nginx2-545c89bd9f-bf7v2           1/1     Running   0          56s    192.168.248.195   kc00   <none>           <none>
+
+- Access the nginx pod (via nodeport)
+
+-- Find the port
+[root@kubeclient helm]# kubectl get --namespace default -o jsonpath="{.spec.ports[0].nodePort}" services wise-elk-nginx2
+31489
+
+-- Find the IP
+[root@kubeclient helm]# kubectl get nodes --namespace default -o jsonpath="{.items[0].status.addresses[0].address}"
+192.168.11.100
+
+-- Curl it
+Curl with pod-ip from within cluster nodes works - as expected
+
+------------------------------------
+PREVIOUS UNSUCCESSFUL ATTEMPT
+------------------------------------
+https://docs.bitnami.com/kubernetes/how-to/create-your-first-helm-chart/
+
+- Create
+# helm create nginx2
+--> This creates a standard helm folder with default charts - which in turn has nginx itself as deployment!
+--> Modify as needed (see later in this docs for modified files)
+
+- Run
+# helm install --dry-run --debug ./nginx2 --set service.type=NodePort
+Error: no available release name found
+
+- To fix the error:  https://github.com/helm/helm/issues/3055
+
+kubectl create serviceaccount --namespace kube-system tiller
+kubectl create clusterrolebinding tiller-cluster-rule --clusterrole=cluster-admin --serviceaccount=kube-system:tiller
+kubectl patch deploy --namespace kube-system tiller-deploy -p '{"spec":{"template":{"spec":{"serviceAccount":"tiller"}}}}'
+
+---- OR, per https://apassionatechie.wordpress.com/tag/service/page/2/
+NOTE:  THIS WORKED (in addition, the pods CIDR should also be different from vm IP range)
+kubectl create serviceaccount --namespace kube-system tiller
+kubectl create clusterrolebinding tiller-cluster-rule --clusterrole=cluster-admin --serviceaccount=kube-system:tiller
+kubectl patch deploy --namespace kube-system tiller-deploy -p '{"spec":{"template":{"spec":{"serviceAccount":"tiller"}}}}'      
+helm init --service-account tiller --upgrade
+
+-- commands and results
+[root@kc0 ~]# kubectl create serviceaccount --namespace kube-system tiller
+serviceaccount/tiller created
+[root@kc0 ~]# kubectl create clusterrolebinding tiller-cluster-rule --clusterrole=cluster-admin --serviceaccount=kube-system:tiller
+clusterrolebinding.rbac.authorization.k8s.io/tiller-cluster-rule created
+[root@kc0 ~]# kubectl patch deploy --namespace kube-system tiller-deploy -p '{"spec":{"template":{"spec":{"serviceAccount":"tiller"}}}}'
+deployment.extensions/tiller-deploy patched
+
+- Re-run helm install
+# helm install --dry-run --debug ./nginx2 --set service.type=NodePort
+--> This too gave the same error
+
+- Try another fix: Same doc - https://github.com/helm/helm/issues/3055
+[root@kubeclient helm]# kubectl delete deployment tiller-deploy --namespace kube-system
+deployment.extensions "tiller-deploy" deleted
+
+[root@kubeclient helm]# helm init --upgrade --service-account default
+$HELM_HOME has been configured at /root/.helm.
+
+Tiller (the Helm server-side component) has been upgraded to the current version.
+Happy Helming!
+
+- Re-run helm install
+# helm install --dry-run --debug ./nginx2 --set service.type=NodePort
+--> Still the same error
+
+- Try fix from this: https://www.reddit.com/r/kubernetes/comments/7su6ae/helm_install_from_stable_got_no_available_release/
+# kubectl logs tiller-deploy-58bf5949ff-9s5vt --namespace=kube-system
+Get https://10.96.0.1:443/api/v1/namespaces/kube-system/configmaps --> IO timeout
+    [storage] 2019/02/12 05:29:08 getting release "foolhardy-whippet.v1"
+    [storage/driver] 2019/02/12 05:29:38 get: failed to get "foolhardy-whippet.v1": Get https://10.96.0.1:443/api/v1/namespaces/kube-system/configmaps/foolhardy-whippet.v1: dial tcp 10.96.0.1:443: i/o timeout
+    [tiller] 2019/02/12 05:29:38 info: generated name foolhardy-whippet is taken. Searching again.
+    [tiller] 2019/02/12 05:29:38 warning: No available release names found after 5 tries
+    [tiller] 2019/02/12 05:29:38 failed install prepare step: no available release name found
+
+Issues: 
+https://github.com/kubernetes-incubator/service-catalog/issues/2426
+https://serverfault.com/questions/931061/helm-i-o-timeout-kubernetes
+    Answer: I (the blogger) was able to solve this by reiniting the cluster with a different CIDR 
+            (was previously using the same CIDR as the host vm (192.168.0.0/16). 
+            I (the blogger) used 172.16.0.0/16 and it worked right away.
+
+-----------------------------
+USING CHARTS IN HELM REPO
+-----------------------------
+https://docs.helm.sh/using_helm/ --> section "INSTALL AN EXAMPLE CHART" 
+(https://docs.helm.sh/using_helm/#install-an-example-chart)
+

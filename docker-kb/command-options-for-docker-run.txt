@@ -1,0 +1,49 @@
+====================
+DOCKER RUN REFERENCE
+====================
+https://docs.docker.com/engine/reference/run/
+
+========================================
+CONSIDER THES COMMANDS
+========================================
+https://github.com/prometheus/node_exporter
+docker run -d \
+  --net="host" \
+  --pid="host" \
+  -v "/:/host:ro,rslave" \
+  prom/node-exporter \
+  --path.rootfs=/host
+
+https://devconnected.com/how-to-install-prometheus-with-docker-on-ubuntu-18-04/
+docker run -d \
+-p 9100:9100 \
+--user 995:995 \
+-v "/:/hostfs" \
+--net="host" \
+prom/node-exporter \
+--path.rootfs=/hostfs
+
+-d: detached mode, will run the node exporter even if we are not directly interacting with it;
+-p: as the node exporter runs on port 9100, we are going to expose this port to Prometheus;
+–user: the node exporter user ID, for security purposes.
+-v: the host filesystem (the machine you are monitoring) is mapped to a folder in the Docker image.
+    (first part before colon is the host's fs -  and second part after the colon is the fs on the container)
+–net: sets the Docker image and the host to share the same network.
+–path.rootfs: instructs the node exporter to look for the filesystem in the hostfs folder. 
+              This way, the Node exporter is not monitoring your Docker filesystem, but the mapped filesystem from your host.
+
+
+NOTE: the -p directive is not needed if we use --net=host - you will get the warning message as below
+      - it is automatic that the container's app will listen on host's same ort as container's
+
+NOTE: also, The host networking driver only works on Linux hosts, and is not supported on Docker Desktop for Mac, 
+      Docker Desktop for Windows, or Docker EE for Windows Server.
+      (from https://docs.docker.com/network/host/ )
+      
+NOTE: The --user directive to docker is to make the container run as the user and not root (however, my user is root for now)
+
+NOTE: --pid="host" uses host's PID namespace
+
+[root@prometheus1 ~]# ps -ef|grep node-exporter
+nfsnobo+ 27088 27071  0 20:37 ?        00:00:00 /bin/node_exporter --path.rootfs=/host
+

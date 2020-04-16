@@ -1,0 +1,298 @@
+=============================================================================
+REDO NODES - FLANNEL INSTALL - with correct interface enp0s8
+=============================================================================
+
+With flannel, centos (being used for round 2 POC)
+  https://www.techrepublic.com/article/how-to-install-a-kubernetes-cluster-on-centos-7/
+  Use it along with https://linuxthegreat.wordpress.com/2017/10/17/installing-kubernetes-1-8-1-on-centos-7/
+(to know about kublet not starting)
+  https://www.howtoforge.com/tutorial/centos-kubernetes-docker-cluster/
+  
+  Also refer to https://icicimov.github.io/blog/kubernetes/Kubernetes-cluster-step-by-step-Part4/
+  (just that this one shows no cni0 in nodes - only in master)
+  
+===================
+NODE
+===================
+
+----------------
+INSTALL SOFTWARE
+----------------
+Do as done in master
+
+----------------
+INSTALL FLANNEL
+----------------
+SOMEWHAT Do as done in master
+--> THIS DID NOT INITIALLY INSTALL FLANNEL
+HOWEVER, AFTER DOING 'JOIN', THAT THING ITSELF INSTALLED FLANNEL AFTER A FEW MIN
+
+- Ensure this shows 1
+# echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
+# cat /proc/sys/net/bridge/bridge-nf-call-iptables
+1
+
+- Edit the file /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+Modify the Environment line --> add node-ip: (replace with correct IP of the node)
+Environment="KUBELET_KUBECONFIG_ARGS=--bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf --kubeconfig=/etc/kubernetes/kubelet.conf --node-ip=192.168.11.10"
+
+
+# systemctl enable kubelet
+# systemctl enable docker
+# systemctl daemon-reload
+# service docker start
+
+-- Then do join which will install flannel (see JOIN MASTER STEP)
+
+----------------
+JOIN MASTER
+----------------
+
+[root@k01 kubeinstall]# kubeadm join 192.168.11.100:6443 --token s8gwke.yxate9aj24yygbhu --discovery-token-ca-cert-hash sha256:ea6d4afd5ae0e4a002d6a1c609dd121f4756e01390d30103b91591e1bf9c6519 --ignore-preflight-errors=all
+[preflight] running pre-flight checks
+	[WARNING RequiredIPVSKernelModulesAvailable]: the IPVS proxier will not be used, because the following required kernel modules are not loaded: [ip_vs_rr ip_vs_wrr ip_vs_sh ip_vs] or no builtin kernel ipvs support: map[ip_vs_wrr:{} ip_vs_sh:{} nf_conntrack_ipv4:{} ip_vs:{} ip_vs_rr:{}]
+you can solve this problem with following methods:
+ 1. Run 'modprobe -- ' to load missing kernel modules;
+2. Provide the missing builtin kernel ipvs support
+
+[preflight] The system verification failed. Printing the output from the verification:
+KERNEL_VERSION: 4.1.12-112.16.4.el7uek.x86_64
+CONFIG_NAMESPACES: enabled
+CONFIG_NET_NS: enabled
+CONFIG_PID_NS: enabled
+CONFIG_IPC_NS: enabled
+CONFIG_UTS_NS: enabled
+CONFIG_CGROUPS: enabled
+CONFIG_CGROUP_CPUACCT: enabled
+CONFIG_CGROUP_DEVICE: enabled
+CONFIG_CGROUP_FREEZER: enabled
+CONFIG_CGROUP_SCHED: enabled
+CONFIG_CPUSETS: enabled
+CONFIG_MEMCG: enabled
+CONFIG_INET: enabled
+CONFIG_EXT4_FS: enabled (as module)
+CONFIG_PROC_FS: enabled
+CONFIG_NETFILTER_XT_TARGET_REDIRECT: enabled (as module)
+CONFIG_NETFILTER_XT_MATCH_COMMENT: enabled (as module)
+CONFIG_OVERLAY_FS: enabled (as module)
+CONFIG_AUFS_FS: not set - Required for aufs.
+CONFIG_BLK_DEV_DM: enabled (as module)
+DOCKER_VERSION: 18.09.0
+OS: Linux
+CGROUPS_CPU: enabled
+CGROUPS_CPUACCT: enabled
+CGROUPS_CPUSET: enabled
+CGROUPS_DEVICES: enabled
+CGROUPS_FREEZER: enabled
+CGROUPS_MEMORY: enabled
+	[WARNING SystemVerification]: unsupported docker version: 18.09.0
+	[WARNING Hostname]: hostname "k11" could not be reached
+	[WARNING Hostname]: hostname "k11" lookup k11 on 192.168.255.104:53: no such host
+[discovery] Trying to connect to API Server "192.168.11.100:6443"
+[discovery] Created cluster-info discovery client, requesting info from "https://192.168.11.100:6443"
+[discovery] Requesting info from "https://192.168.11.100:6443" again to validate TLS against the pinned public key
+[discovery] Cluster info signature and contents are valid and TLS certificate validates against pinned roots, will use API Server "192.168.11.100:6443"
+[discovery] Successfully established connection with API Server "192.168.11.100:6443"
+[kubelet] Downloading configuration for the kubelet from the "kubelet-config-1.12" ConfigMap in the kube-system namespace
+[kubelet] Writing kubelet configuration to file "/var/lib/kubelet/config.yaml"
+[kubelet] Writing kubelet environment file with flags to file "/var/lib/kubelet/kubeadm-flags.env"
+[preflight] Activating the kubelet service
+[tlsbootstrap] Waiting for the kubelet to perform the TLS Bootstrap...
+[patchnode] Uploading the CRI Socket information "/var/run/dockershim.sock" to the Node API object "k11" as an annotation
+
+This node has joined the cluster:
+* Certificate signing request was sent to apiserver and a response was received.
+* The Kubelet was informed of the new secure connection details.
+
+Run 'kubectl get nodes' on the master to see this node join the cluster.
+
+-- NOW, WAIT A BIT AND YOU WILL SEE FLANNEL RUNNING
+
+- INITIALLY
+[root@k01 kubeinstall]# kubectl get nodes
+NAME   STATUS     ROLES    AGE   VERSION
+k00    Ready      master   50m   v1.12.3
+k11    NotReady   <none>   6s    v1.12.3
+
+[root@k01 kubeinstall]# route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+0.0.0.0         10.0.2.2        0.0.0.0         UG    100    0        0 enp0s3
+10.0.2.0        0.0.0.0         255.255.255.0   U     100    0        0 enp0s3
+172.17.0.0      0.0.0.0         255.255.0.0     U     0      0        0 docker0
+192.168.11.0    0.0.0.0         255.255.255.0   U     101    0        0 enp0s8
+192.168.12.0    0.0.0.0         255.255.255.0   U     102    0        0 enp0s9
+192.168.122.0   0.0.0.0         255.255.255.0   U     0      0        0 virbr0
+
+[root@k11 kubeinstall]# ps -ef|grep fla
+root      5672  3258  0 16:08 pts/0    00:00:00 grep --color=auto fla
+
+
+- AFTER A FEW MIN
+--> Node shows up as ready
+[root@k01 kubeinstall]# kubectl get nodes
+NAME   STATUS   ROLES    AGE     VERSION
+k00    Ready    master   57m     v1.12.3
+k11    Ready    <none>   6m28s   v1.12.3
+
+--> You can see flannel running with correct iface=enp0s8
+[root@k01 kubeinstall]# ps -ef|grep fla
+root      6047  6031  0 16:09 ?        00:00:00 /opt/bin/flanneld --ip-masq --kube-subnet-mgr --iface=enp0s8
+root      6349  3258  0 16:10 pts/0    00:00:00 grep --color=auto fla
+
+--> Flannel shows up in route  (HOWEVER, CNI0 does not show)
+[root@k01 kubeinstall]# route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+0.0.0.0         10.0.2.2        0.0.0.0         UG    100    0        0 enp0s3
+10.0.2.0        0.0.0.0         255.255.255.0   U     100    0        0 enp0s3
+172.17.0.0      0.0.0.0         255.255.0.0     U     0      0        0 docker0
+192.168.0.0     192.168.0.0     255.255.255.0   UG    0      0        0 flannel.1
+192.168.11.0    0.0.0.0         255.255.255.0   U     101    0        0 enp0s8
+192.168.12.0    0.0.0.0         255.255.255.0   U     102    0        0 enp0s9
+192.168.122.0   0.0.0.0         255.255.255.0   U     0      0        0 virbr0
+
+--> Flannel shows up in IP (HOWEVER, CNI0 does not show)
+[root@k01 kubeinstall]# ip addr list
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default 
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host 
+       valid_lft forever preferred_lft forever
+2: enp0s3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group default qlen 1000
+    link/ether 08:00:27:10:44:20 brd ff:ff:ff:ff:ff:ff
+    inet 10.0.2.15/24 brd 10.0.2.255 scope global noprefixroute dynamic enp0s3
+       valid_lft 84943sec preferred_lft 84943sec
+    inet6 fe80::2481:bef7:e0d6:5810/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+3: enp0s8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group default qlen 1000
+    link/ether 08:00:27:7b:13:15 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.11.101/24 brd 192.168.11.255 scope global noprefixroute enp0s8
+       valid_lft forever preferred_lft forever
+    inet6 fe80::586b:16f6:5398:2b74/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+    inet6 fe80::5270:6f3b:6966:ad14/64 scope link tentative noprefixroute dadfailed 
+       valid_lft forever preferred_lft forever
+4: enp0s9: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group default qlen 1000
+    link/ether 08:00:27:ca:34:38 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.12.101/24 brd 192.168.12.255 scope global noprefixroute enp0s9
+       valid_lft forever preferred_lft forever
+    inet6 fe80::29:9987:4fcf:641c/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+    inet6 fe80::b331:1d54:d60b:62c1/64 scope link tentative noprefixroute dadfailed 
+       valid_lft forever preferred_lft forever
+5: virbr0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default 
+    link/ether 52:54:00:cc:ab:31 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.122.1/24 brd 192.168.122.255 scope global virbr0
+       valid_lft forever preferred_lft forever
+6: virbr0-nic: <BROADCAST,MULTICAST> mtu 1500 qdisc pfifo_fast master virbr0 state DOWN group default qlen 500
+    link/ether 52:54:00:cc:ab:31 brd ff:ff:ff:ff:ff:ff
+7: docker0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default 
+    link/ether 02:42:ce:dd:4c:57 brd ff:ff:ff:ff:ff:ff
+    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0
+       valid_lft forever preferred_lft forever
+8: flannel.1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UNKNOWN group default 
+    link/ether 2e:dd:24:f1:08:55 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.1.0/32 scope global flannel.1
+       valid_lft forever preferred_lft forever
+    inet6 fe80::2cdd:24ff:fef1:855/64 scope link 
+       valid_lft forever preferred_lft forever
+
+
+- CHECKS
+
+(after joining two nodes)
+
+-- BRIDGE FDB SHOW
+
+[root@k00 ~]# bridge fdb show dev flannel.1
+82:f4:dc:31:6c:dc dst 192.168.11.102 self permanent
+2e:dd:24:f1:08:55 dst 192.168.11.101 self permanent
+
+
+[root@k01 ~]# bridge fdb show dev flannel.1[root@k01 ~]# bridge fdb show dev flannel.1
+82:f4:dc:31:6c:dc dst 192.168.11.102 self permanent
+fe:42:f5:00:b0:e1 dst 192.168.11.100 self permanent
+
+[root@k02 ~]# bridge fdb show dev flannel.1
+2e:dd:24:f1:08:55 dst 192.168.11.101 self permanent
+fe:42:f5:00:b0:e1 dst 192.168.11.100 self permanent
+
+- ROUTE -N
+Note1: cni0 is on master only - and for 192.168.0.0
+Note2: master shows 192.168.1.0 and 192.168.2.0 flannel.1 entries
+Note3: node1 shows flannel.1 for 0.0 and 2.0
+Note4: node2 shows flannel.1 for 0.0 and 1.0
+
+[root@k00 ~]# route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+0.0.0.0         10.0.2.2        0.0.0.0         UG    100    0        0 enp0s3
+10.0.2.0        0.0.0.0         255.255.255.0   U     100    0        0 enp0s3
+172.17.0.0      0.0.0.0         255.255.0.0     U     0      0        0 docker0
+192.168.0.0     0.0.0.0         255.255.255.0   U     0      0        0 cni0
+192.168.1.0     192.168.1.0     255.255.255.0   UG    0      0        0 flannel.1
+192.168.2.0     192.168.2.0     255.255.255.0   UG    0      0        0 flannel.1
+192.168.11.0    0.0.0.0         255.255.255.0   U     101    0        0 enp0s8
+192.168.12.0    0.0.0.0         255.255.255.0   U     102    0        0 enp0s9
+192.168.122.0   0.0.0.0         255.255.255.0   U     0      0        0 virbr0
+
+[root@k01 ~]# route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+0.0.0.0         10.0.2.2        0.0.0.0         UG    100    0        0 enp0s3
+10.0.2.0        0.0.0.0         255.255.255.0   U     100    0        0 enp0s3
+172.17.0.0      0.0.0.0         255.255.0.0     U     0      0        0 docker0
+192.168.0.0     192.168.0.0     255.255.255.0   UG    0      0        0 flannel.1
+192.168.2.0     192.168.2.0     255.255.255.0   UG    0      0        0 flannel.1
+192.168.11.0    0.0.0.0         255.255.255.0   U     101    0        0 enp0s8
+192.168.12.0    0.0.0.0         255.255.255.0   U     102    0        0 enp0s9
+192.168.122.0   0.0.0.0         255.255.255.0   U     0      0        0 virbr0
+
+[root@k02 ~]# route -n
+Kernel IP routing table
+Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
+0.0.0.0         10.0.2.2        0.0.0.0         UG    100    0        0 enp0s3
+10.0.2.0        0.0.0.0         255.255.255.0   U     100    0        0 enp0s3
+172.17.0.0      0.0.0.0         255.255.0.0     U     0      0        0 docker0
+192.168.0.0     192.168.0.0     255.255.255.0   UG    0      0        0 flannel.1
+192.168.1.0     192.168.1.0     255.255.255.0   UG    0      0        0 flannel.1
+192.168.11.0    0.0.0.0         255.255.255.0   U     101    0        0 enp0s8
+192.168.12.0    0.0.0.0         255.255.255.0   U     102    0        0 enp0s9
+192.168.122.0   0.0.0.0         255.255.255.0   U     0      0        0 virbr0
+
+- IP ROUTE
+
+[root@k00 ~]# ip route
+default via 10.0.2.2 dev enp0s3 proto dhcp metric 100 
+10.0.2.0/24 dev enp0s3 proto kernel scope link src 10.0.2.15 metric 100 
+172.17.0.0/16 dev docker0 proto kernel scope link src 172.17.0.1 
+192.168.0.0/24 dev cni0 proto kernel scope link src 192.168.0.1 
+192.168.1.0/24 via 192.168.1.0 dev flannel.1 onlink 
+192.168.2.0/24 via 192.168.2.0 dev flannel.1 onlink 
+192.168.11.0/24 dev enp0s8 proto kernel scope link src 192.168.11.100 metric 101 
+192.168.12.0/24 dev enp0s9 proto kernel scope link src 192.168.12.100 metric 102 
+192.168.122.0/24 dev virbr0 proto kernel scope link src 192.168.122.1 
+
+[root@k01 ~]# ip route
+default via 10.0.2.2 dev enp0s3 proto dhcp metric 100 
+10.0.2.0/24 dev enp0s3 proto kernel scope link src 10.0.2.15 metric 100 
+172.17.0.0/16 dev docker0 proto kernel scope link src 172.17.0.1 
+192.168.0.0/24 via 192.168.0.0 dev flannel.1 onlink 
+192.168.2.0/24 via 192.168.2.0 dev flannel.1 onlink 
+192.168.11.0/24 dev enp0s8 proto kernel scope link src 192.168.11.101 metric 101 
+192.168.12.0/24 dev enp0s9 proto kernel scope link src 192.168.12.101 metric 102 
+192.168.122.0/24 dev virbr0 proto kernel scope link src 192.168.122.1 
+
+[root@k02 ~]# ip route
+default via 10.0.2.2 dev enp0s3 proto dhcp metric 100 
+10.0.2.0/24 dev enp0s3 proto kernel scope link src 10.0.2.15 metric 100 
+172.17.0.0/16 dev docker0 proto kernel scope link src 172.17.0.1 
+192.168.0.0/24 via 192.168.0.0 dev flannel.1 onlink 
+192.168.1.0/24 via 192.168.1.0 dev flannel.1 onlink 
+192.168.11.0/24 dev enp0s8 proto kernel scope link src 192.168.11.102 metric 101 
+192.168.12.0/24 dev enp0s9 proto kernel scope link src 192.168.12.102 metric 102 
+192.168.122.0/24 dev virbr0 proto kernel scope link src 192.168.122.1 
+
+

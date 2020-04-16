@@ -1,0 +1,140 @@
+===
+AWX
+===
+
+
+---
+Tower Docs: https://docs.ansible.com/ansible-tower/
+--
+
+https://www.ansible.com/blog/5-things-you-can-do-with-awx 
+https://github.com/ansible/awx/blob/devel/INSTALL.md --> install guide
+
+https://github.com/ansible/tower-cli --> tower cli
+
+Tutorial:
+https://www.systemmen.com/devops/ansible/install-ansible-awx-on-centos-7-187.html
+https://medium.com/@ripon.banik/getting-started-with-ansible-tower-awx-part-1-cce73edab0a4
+https://www.howtoforge.com/tutorial/how-to-install-ansible-awx-with-docker-on-centos/
+https://developer.ibm.com/articles/automation-using-ansible-awx-gui/ - nice one
+
+https://www.jeffgeerling.com/blog/automating-your-automation-ansible-tower
+
+Tutorial - with LDAP and SSL through Apache:
+https://dzone.com/articles/part-4-ansible-tower 
+
+Tutorial - Docker with Nginx SSL proxy :
+https://www.technoblogy.net/installing-ansible-awx-on-ubuntu-16-04-lts-including-proxy-for-ssl/
+https://lreed.net/post/2018-01-10-awx-nginx/ --> using nginx docker container
+  
+SSL:
+https://docs.ansible.com/ansible-tower/2.2.0/html/installandreference/general_install_notes.html
+https://docs.ansible.com/ansible-tower/latest/html/administration/ldap_auth.html
+
+LDAP:
+https://docs.ansible.com/ansible-tower/latest/html/administration/ldap_auth.html
+
+SSL, LDAP:
+https://fale.io/blog/2017/10/06/ansible-tower-ldap-with-self-signed-ca/
+
+SSL pem not working (issue):
+https://www.reddit.com/r/ansible/comments/az3pyx/ssl_with_awx_standalone_docker_install/
+https://groups.google.com/forum/#!topic/awx-project/p5oWivyuGPA
+
+SAML:
+https://www.ansible.com/blog/using-saml-with-red-hat-ansible-tower
+
+Top questions:
+https://stackoverflow.com/questions/tagged/ansible-tower?sort=votes
+
+= = = = =
+
+Automating automation - setting up AWX using towr server folders than GUI: 
+https://www.jeffgeerling.com/blog/automating-your-automation-ansible-tower
+
+Basics:
+https://medium.com/@ripon.banik/getting-started-with-ansible-tower-awx-part-1-cce73edab0a4 (install)  
+https://www.howtoforge.com/ansible-awx-guide-basic-usage-and-configuration/ (use)
+
+Trigger a job using Rest API:
+https://www.unixarena.com/2019/03/ansible-tower-awx-trigger-ansible-job-using-rest-api.html/
+
+Rest API with tower-cli:
+http://devopstechie.com/ansible-tower-rest-api-with-python-tower-cli/
+https://haystacknetworks.com/ansible-tower-rest-api-part-1 (this has more of GUI)
+https://haystacknetworks.com/ansible-tower-rest-api-part-2 (this has more of API)
+
+Rest API usage examples:
+https://www.ansible.com/blog/getting-started-ansible-towers-api
+API to list job stdout - https://stackoverflow.com/questions/46611895/is-there-any-way-to-get-the-logs-output-of-a-job-using-ansible-tower-rest-api
+
+Tuning:
+https://www.ansible.com/blog/ansible-performance-tuning
+
+----------------
+Official Docs
+----------------
+Tower:
+https://docs.ansible.com/ansible-tower/
+
+Administration:
+https://docs.ansible.com/ansible-tower/latest/html/administration/index.html
+
+User Guide:
+https://docs.ansible.com/ansible-tower/latest/html/userguide/index.html
+
+Tower API:
+https://docs.ansible.com/ansible-tower/latest/html/towerapi/
+https://docs.ansible.com/ansible-tower/latest/html/towerapi/api_ref.html (all calls references)
+https://docs.ansible.com/ansible-tower/3.2.6/html/towerapi/launch_jobtemplate.html --> launch job template
+
+API Example:
+https://docs.ansible.com/ansible-tower/latest/html/administration/oauth2_token_auth.html
+curl -k -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -X POST  -d '{}' https://tower/api/v2/job_templates/5/launch/
+
+Tower CLI:
+https://docs.ansible.com/ansible-tower/latest/html/towerapi/tower_cli.html
+https://docs.ansible.com/ansible-tower/latest/html/administration/towercli.html
+
+Oauth2 Authentication:
+https://docs.ansible.com/ansible-tower/latest/html/administration/oauth2_token_auth.html
+https://docs.ansible.com/ansible-tower/latest/html/userguide/applications_auth.html
+
+Social Authentication (git etc):
+https://docs.ansible.com/ansible-tower/latest/html/administration/social_auth.html
+
+Enterprise Authentication:
+https://docs.ansible.com/ansible-tower/latest/html/administration/ent_auth.html
+
+LDAP Authentication:
+https://docs.ansible.com/ansible-tower/latest/html/administration/ldap_auth.html
+
+Backup/Restore:
+https://docs.ansible.com/ansible-tower/latest/html/administration/backup_restore.html
+
+
+=================
+REPOS, IMAGES
+=================
+--------
+GITHUB
+--------
+https://github.com/ansible/awx
+
+---------
+DOCKER
+---------
+https://hub.docker.com/r/ansible/awx_web
+https://hub.docker.com/r/ansible/awx_task
+https://hub.docker.com/r/ansible/awx_rabbitmq
+https://hub.docker.com/r/ansible/postgresql
+
+https://hub.docker.com/r/ansible/ansible-runner
+https://hub.docker.com/r/ansible/ubuntu14.04-ansible
+
+https://hub.docker.com/r/ansible/galaxy
+https://hub.docker.com/r/ansible/galaxy-elasticsearch
+
+
+
+

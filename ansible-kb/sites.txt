@@ -1,8 +1,10 @@
 Examples - https://github.com/ansible/ansible-examples
 
 Tutorials -
+https://ansible-tutorial.com/
 https://opensource.com/article/17/7/automate-sysadmin-ansible
 https://serversforhackers.com/c/an-ansible-tutorial
+https://www.trainingdevops.com/training-material/ansible-workshop
 
 Playbook - http://docs.ansible.com/ansible/latest/playbooks_intro.html
 
@@ -11,6 +13,18 @@ sudo user pass - https://stackoverflow.com/questions/21870083/specify-sudo-passw
 
 Configuration parameters - http://docs.ansible.com/ansible/latest/intro_configuration.html#private-key-file
 Inventory - http://docs.ansible.com/ansible/latest/user_guide/intro_inventory.html
+Inventory - dynamic inventory - https://docs.ansible.com/ansible/2.3/intro_dynamic_inventory.html
+
+Roles, variables, vaults - 
+https://docs.ansible.com/ansible/latest/user_guide/playbooks_best_practices.html#best-practices-for-variables-and-vaults
+https://docs.ansible.com/ansible/latest/user_guide/playbooks_variables.html
+
+Lots of examples - 
+https://github.com/ansible/ansible-examples/tree/master/lamp_haproxy
+https://github.com/enginyoyen/ansible-best-practises
+
+Running with undefined variables - 
+https://stackoverflow.com/questions/30119973/how-to-run-a-task-when-variable-is-undefined-in-ansible
 
 Modules
 http://docs.ansible.com/ansible/latest/shell_module.html
@@ -23,3 +37,10 @@ http://docs.ansible.com/ansible/latest/script_module.html --> runs a local scrip
 https://stackoverflow.com/questions/18900236/run-command-on-the-ansible-host --> git pulling, local command running etc
 
 Templating: https://oliverveits.wordpress.com/2015/11/20/it-automation-part-ii-ansible-hello-world-for-templating/
+
+Shutdown and check if a host is down or not - https://stackoverflow.com/questions/48423272/ansible-task-for-checking-that-a-host-is-really-offline-after-shutdown
+
+===================
+SPECIFIC TASKS
+===================
+copy files: http://www.mydailytutorials.com/how-to-copy-files-and-directories-in-ansible-using-copy-and-fetch-modules/

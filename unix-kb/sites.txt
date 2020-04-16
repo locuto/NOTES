@@ -1,1 +1,19 @@
+RHEL documentation - https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/system_administrators_guide/sect-managing_services_with_systemd-unit_files
+
 RHEL Security Guide - https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/security_guide/index
+
+Auditd, auditbeat - https://dzone.com/articles/monitoring-audit-logs-with-auditd-and-auditbeat-1
+
+Rsyslog formatting - 
+https://www.rsyslog.com/using-a-different-log-format-for-all-files/
+http://certifiedgeek.weebly.com/blog/rsyslog-json-format-template   (JSON)
+
+Kickstart
+- https://docs.fedoraproject.org/en-US/Fedora/25/html/Installation_Guide/sect-kickstart-commands-rootpw.html
+- password encryption - https://thornelabs.net/posts/hash-roots-password-in-rhel-and-centos-kickstart-profiles.html
+
+
+IMAGES/ISO/DVD
+Centos7 - http://linux.mirrors.es.net/centos/7/isos/x86_64/
+Fedora server - https://getfedora.org/en/server/download/
+Fedora desktop - https://getfedora.org/en/workstation/download/

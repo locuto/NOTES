@@ -1,0 +1,130 @@
+===================================
+COBRA COMMAND DEVELOPER
+===================================
+https://github.com/spf13/cobra (product git) --> this itself has a good example
+https://ordina-jworks.github.io/development/2018/10/20/make-your-own-cli-with-golang-and-cobra.html (tutorial)
+
+Initial code generator: https://github.com/spf13/cobra/blob/master/cobra/README.md
+
+===================================
+PROJECT - COBRA1
+===================================
+Based on example in https://github.com/spf13/cobra
+
+-----------
+SETUP
+-----------
+GOPATH, GOROOT --> NOT SET (that makes GOPATH default to ~/go)
+Folder /mywork/golang/src/cobra1
+
+$ mkdir /mywork/golang/src/cobra1
+$ mkdir /mywork/golang/src/cobra1/cmd
+
+-------------
+INSTALL COBRA
+-------------
+$ go get -u github.com/spf13/cobra/cobra
+
+This will install cobra libraries in ~/go/src - and - cobra binary in ~/go/bin.
+The cobra binary can be used to generate cobra initial code/folder setup and such.
+
+----------
+main.go
+----------
+File: /mywork/golang/src/cobra1/main.go
+NOTE: Using just "./cmd" for now - it is usually made as a git like folder
+NOTE: If using go modules, with "go mod init cobra1" then import "./cmd" in main.go fails - as it cannot find it
+          $ go build
+          build cobra1: cannot find module for path _/mywork/golang/src/cobra1/cmd
+
+main.go:
+
+package main
+
+import (
+
+  //"/mywork/golang/src/cobra1/cmd"
+
+  "./cmd"
+)
+
+func main() {
+  cmd.Execute()
+}
+
+----------------------
+root.go - root command
+----------------------
+Folder: cmd
+Note: If the 'Run' part is not there, then only the Long/Short description will be displayed upon execution
+
+
+package cmd
+
+import (
+  "fmt"
+  "os"
+
+  "github.com/spf13/cobra"
+)
+
+var rootCmd = &cobra.Command{
+  Use:   "cobra1",
+  Short: "cobra1 is a runner",
+  Long: `A cobra command program
+                just to get a hang of it`,
+                
+  Run: func(cmd *cobra.Command, args []string) {
+    fmt.Println("it is running!")
+  },
+}
+
+func Execute() {
+  if err := rootCmd.Execute(); err != nil {
+    fmt.Println(err)
+    os.Exit(1)
+  }
+}
+
+----------------
+BUILD IT
+----------------
+$ cd /mywork/golang/src/cobra1
+$ go build
+--> this will produce an executable 'cobra1'
+
+- Run it:
+$ ./cobra1
+--> this produces a message on screen:
+it is running!
+
+- Get help message:
+$ cobra1 --help
+A cobra command program
+                just to get a hang of it
+
+Usage:
+  cobra1 [flags]
+
+Flags:
+  -h, --help   help for cobra1
+  
+===================================
+PROJECT - COBRA2
+===================================
+GOPATH, GOROOT --> NOT SET (that makes GOPATH default to ~/go)
+
+Folder /mywork/golang/src --> to which cobra generated stuff will be copied on
+
+- GENERATE BASE CODE
+$ cobra init github.com/coderdba/cobra2
+--> this will create a folder and initial files in ~/go (or $GOPATH if set) --> ~/go/src/github.com/coderdba/cobra2
+
+Copy the folder and its content as: (alternatively, work in the ~/go based folder itself)
+/mywork/golang/src/github.com/coderdba/cobra2
+
+$ cd /mywork/golang/src/github.com/coderdba/cobra2
+$ go build
+$ cobra2
+...
+... this will display the already entered stuff in root.go

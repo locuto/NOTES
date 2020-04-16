@@ -1,0 +1,287 @@
+
+===========
+main.go
+===========
+// Copyright © 2019 NAME HERE <EMAIL ADDRESS>
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package main
+
+import "github.com/coderdba/cobra2/cmd"
+
+func main() {
+	cmd.Execute()
+}
+
+
+===========
+cmd/root.go
+===========
+// Copyright © 2019 NAME HERE <EMAIL ADDRESS>
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package cmd
+
+import (
+	"fmt"
+	"os"
+
+	homedir "github.com/mitchellh/go-homedir"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+)
+
+var cfgFile string
+
+// rootCmd represents the base command when called without any subcommands
+var rootCmd = &cobra.Command{
+	Use:   "cobra2",
+	Short: "Cobra2 is a developed for learning cobra and go",
+	Long: `Cobra2 is a developed for learning cobra and go
+just for learning and fun!`,
+	// Uncomment the following line if your bare application
+	// has an action associated with it:
+	Run: func(cmd *cobra.Command, args []string) { fmt.Println("it is running!") },
+}
+
+// Execute adds all child commands to the root command and sets flags appropriately.
+// This is called by main.main(). It only needs to happen once to the rootCmd.
+func Execute() {
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+}
+
+func init() {
+	cobra.OnInitialize(initConfig)
+
+	// Here you will define your flags and configuration settings.
+	// Cobra supports persistent flags, which, if defined here,
+	// will be global for your application.
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.cobra2.yaml)")
+
+	// Cobra also supports local flags, which will only run
+	// when this action is called directly.
+	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+}
+
+// initConfig reads in config file and ENV variables if set.
+func initConfig() {
+	if cfgFile != "" {
+		// Use config file from the flag.
+		viper.SetConfigFile(cfgFile)
+	} else {
+		// Find home directory.
+		home, err := homedir.Dir()
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		// Search config in home directory with name ".cobra2" (without extension).
+		viper.AddConfigPath(home)
+		viper.SetConfigName(".cobra2")
+	}
+
+	viper.AutomaticEnv() // read in environment variables that match
+
+	// If a config file is found, read it in.
+	if err := viper.ReadInConfig(); err == nil {
+		fmt.Println("Using config file:", viper.ConfigFileUsed())
+	}
+}
+
+==============
+cmd/version.go
+==============
+package cmd
+
+import (
+  "fmt"
+
+  "github.com/spf13/cobra"
+)
+
+func init() {
+  rootCmd.AddCommand(versionCmd)
+}
+
+var versionCmd = &cobra.Command{
+  Use:   "version",
+  Short: "Prints version number",
+  Long:  `Prints version number for this application`,
+  Run: func(cmd *cobra.Command, args []string) {
+    fmt.Println("Cobra2 version v0.1")
+  },
+}
+
+============
+cmd/prmsg.go
+============
+package cmd
+
+import (
+  "fmt"
+
+  "github.com/spf13/cobra"
+)
+
+func init() {
+  rootCmd.AddCommand(prmsgCmd)
+}
+
+var prmsgCmd = &cobra.Command{
+  Use:   "prmsg",
+  Short: "Prints a message",
+  Long:  `Prints a message you send it`,
+  Run: func(cmd *cobra.Command, args []string) {
+    fmt.Println("This is your message: ", args[0])
+  },
+}
+
+=============
+BUILD and RUN
+=============
+
+$ go build
+$ cobra2
+$ cobra2 version
+$ cobra2 prmsg "my message"
+
+===============
+BUILD FOR LINUX -->  THIS IS IMPORTANT FOR CREATING A LINUX DOCKER IMAGE (the mac compiled version wont run in Linux)
+===============
+See section TROUBLESHOOT MAC COMPILED EXECUTABLE ISSUE - for troubleshooting before leading to this
+
+Set the GOOS and GOARCH to the right OS and architecture setting and then build the project:
+
+$ export GOOS=linux 
+$ export GOARCH=amd64 
+$ go build
+
+===========
+Dockerfile
+===========
+$ cat Dockerfile
+FROM alpine as runner
+ENTRYPOINT [ "/cobra2" ]
+COPY cobra2 .
+
+======================
+Docker Build Image
+======================
+
+$ docker build -t cobra2 .
+Sending build context to Docker daemon  12.29MB
+Step 1/3 : FROM alpine as runner
+latest: Pulling from library/alpine
+8e402f1a9c57: Pull complete 
+Digest: sha256:644fcb1a676b5165371437feaa922943aaf7afcfa8bfee4472f6860aad1ef2a0
+Status: Downloaded newer image for alpine:latest
+ ---> 5cb3aa00f899
+Step 2/3 : ENTRYPOINT [ "/cobra2" ]
+ ---> Running in dc66f90a3bec
+Removing intermediate container dc66f90a3bec
+ ---> 8da7bcd5fab4
+Step 3/3 : COPY cobra2 .
+ ---> 9e355ffcdb3a
+Successfully built 9e355ffcdb3a
+Successfully tagged cobra2:latest
+$ cat Dockerfile
+FROM alpine as runner
+ENTRYPOINT [ "/cobra2" ]
+COPY cobra2 .
+
+$ docker images
+REPOSITORY                           TAG                 IMAGE ID            CREATED             SIZE
+cobra2                               latest              9e355ffcdb3a        4 minutes ago       17.8MB
+alpine                               latest              5cb3aa00f899        3 weeks ago         5.53MB
+
+======================
+Docker Run Image
+======================
+
+$ docker run --rm -i -t cobra2
+it is running!
+
+$  docker run --rm -i -t cobra2 version
+Cobra2 version v0.1
+
+$  docker run --rm -i -t cobra2 prmsg "my message"
+This is your message:  my message
+
+======================
+APPENDIX
+======================
+
+============================================
+TROUBLESHOOT MAC COMPILED EXECUTABLE ISSUE
+============================================
+
+$ docker run --rm -i -t cobra2
+standard_init_linux.go:190: exec user process caused "exec format error"
+
+$ docker run --rm -i -t cobra2 version
+standard_init_linux.go:190: exec user process caused "exec format error"
+
+---------
+Debugging
+---------
+Changed the dockerfile as follows (removed entrypoint, added chmod)
+FROM alpine as runner
+COPY cobra2 .
+RUN chmod +x ./cobra2
+#ENTRYPOINT [ "/cobra2" ]
+
+
+$ docker run -it --rm cobra2
+This took me to shell of the container
+
+/ # ls -l
+total 12032
+drwxr-xr-x    2 root     root          4096 Mar  4 15:43 bin
+-rwxr-xr-x    1 root     root      12259380 Apr  3 08:27 cobra2 --> it has copied alright
+drwxr-xr-x    5 root     root           360 Apr  3 09:14 dev
+
+/ # export PATH=$PATH:.
+
+/ # cobra2
+H: not foundne 1: ????
+./cobra2: line 2: syntax error: unexpected word (expecting ")")
+
+- with debian:jessie-slim instead of alpine it gave this error:
+bash: ./cobra2: cannot execute binary file: Exec format error
+
+-- THIS MAY BE BECAUSE IT WAS COMPILED ON MAC, BUT BEING RUN ON LINUX
+https://stackoverflow.com/questions/23377271/how-do-i-cross-compile-a-go-program-on-a-mac-for-ubuntu
+
+SO, build FOR LINUX: 
+(put this in a script and run the script instead of doing it on the command line 
+- so that you wont permanently set those environment variables)
+export GOOS=linux 
+export GOARCH=amd64 
+go build
+

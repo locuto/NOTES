@@ -1,0 +1,346 @@
+https://www.tutorialspoint.com/groovy/groovy_overview.htm 
+https://www.jetbrains.com/help/idea/getting-started-with-groovy.html - more clear set of lessons
+https://www.logicbig.com/tutorials/misc/groovy/intellij.html - has Intellij setup
+https://mrhaki.blogspot.com/2009/10/simple-groovy-project-in-intellij-idea.html - Intellij setup only - no lessons
+https://www.vogella.com/tutorials/Groovy/article.html - has Eclipse setup
+
+Inject logging:
+https://chburmeister.github.io/2017/02/22/logging-in-groovy-with-replaceable-logger-implementations.html
+https://mrhaki.blogspot.com/2011/04/groovy-goodness-inject-logging-using.html (older)
+
+=======================
+THINGS TO KNOW
+=======================
+import spock.lang.AutoCleanup
+import spock.lang.Shared
+import spock.lang.Specification
+import spock.lang.Unroll
+
+import groovy.util.logging.Slf4j
+
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
+
+import com.codahale.metrics.MetricRegistry
+import com.codahale.metrics.ConsoleReporter
+import com.codahale.metrics.Histogram
+
+import com.google.inject.Inject
+import com.google.inject.Singleton
+
+import org.apache.commons.lang3.RandomStringUtils
+
+import io.minio.MinioClient
+
+import ratpack.exec.Execution
+import ratpack.exec.Operation
+import ratpack.exec.Promise
+import ratpack.exec.util.ParallelBatch
+import ratpack.exec.util.SerialBatch
+import ratpack.service.DependsOn
+import ratpack.service.Service
+import ratpack.service.StartEvent
+import ratpack.exec.Blocking
+import ratpack.exec.Execution
+import ratpack.exec.Operation
+import ratpack.exec.Promise
+import ratpack.exec.util.ParallelBatch
+import ratpack.service.Service
+import ratpack.service.StartEvent
+
+import ratpack.groovy.test.embed.GroovyEmbeddedApp
+import ratpack.registry.Registry
+import ratpack.service.StartEvent
+import ratpack.test.exec.ExecHarness
+
+onStart method for a groovy class - adopted from Ratpack imports
+
+=======================
+OVERVIEW
+=======================
+https://www.tutorialspoint.com/groovy/groovy_overview.htm
+
+Groovy has the following features −
+
+Support for both static and dynamic typing.
+Support for operator overloading.
+Native syntax for lists and associative arrays.
+Native support for regular expressions.
+Native support for various markup languages such as XML and HTML.
+Groovy is simple for Java developers since the syntax for Java and Groovy are very similar.
+You can use existing Java libraries.
+Groovy extends the java.lang.Object.
+
+If you want to include the groovy binaries as part of you maven or gradle build, you can add the following lines
+
+Gradle
+'org.codehaus.groovy:groovy:2.4.5'
+
+Maven
+<groupId>org.codehaus.groovy</groupId> 
+<artifactId>groovy</artifactId>  
+<version>2.4.5</version>
+
+===========================
+CREATING PROJECT IN IDEA
+===========================
+https://www.logicbig.com/tutorials/misc/groovy/intellij.html
+
+- CREATE A PROJECT
+mkdir groovy1
+Open the folder in idea
+It will ask something to convert to an idea project - and follow intution
+
+- CREATE A MODULE
+Click on groovy1 in project view
+New --> module --> Groovy
+It should show the "Module JDK" and "Groovy Library" - chose JDK 1.8 (adoptopenjdk) and Groovy 2.5.9 (installed by sdkman)
+
+Module name = various01
+Its folder will be = groovy1/various01
+and 'content root' and 'module file location' same as groovy1/various01
+
+Click 'finish'
+
+This will create a subfolder various01 and a folder 'src' under it
+
+- COMPILER OUTPUT FOLDER
+Click on the project 'groovy1'
+File --> project structure
+There you find the executables "project compiler output" will go to groovy1/out
+
+- ADDING FRAMEWORK SUPPORT
+At the 'module' level we can add farmework support
+Right clieck module 'various01' and choose 'add framework support' - you can see Kotlin (Groovy is already added)
+
+=====================
+PACKAGES
+=====================
+You can use the default directory 'src'
+Or, you can create a custom sub-directory like 'src/main' or 'src/main/groovy'
+Then, click on that directory (for now just src)
+
+- Package 'hello'
+--> New --> Package --> give package name 'hello' --> creates subfolder 'hello'
+
+- Package 'com.gm.hello'
+--> New --> Package --> give package name 'com.gm.hello' --> creates subfolder com/gm/hello
+
+===============================
+ALTERNATIVE DIRECTORY STRUCTURE (gradle)
+===============================
+With Groovy and Ratpack
+
+For Groovy part:
+Module 'various01'
+Folder various01/src
+then module 'main' as 'various01/src/main'
+Folder groovy under module main as 'various01/src/main/groovy'
+In that 'groovy' folder - various packages
+Example package: 'com.gm.hello' which will be in folder 'various01/src/main/groovy/com/gm/hello'
+
+For Ratpack part:
+Under 'various01/src'
+Module 'ratpack'
+In that files like application.yml, ratpack.groovy
+
+For gradle, drone, Dockerfile etc:
+All files like .drone.yml, Dockerfile, gradlew, build.gradle can be in the folder 'various01'
+Gradle will create a .gradle and gradle folders in various01
+Gradle will also create a folder 'build' for outputs with subfolders like classes, generated, resources, tmp
+
+For testing:
+src/test/functional/groovy
+src/test/integration/groovy
+src/test/unit/groovy
+
+======================================================
+ASSIGN SDK - LIKE JDK
+======================================================
+- AT PROJECT LEVEL
+File --> Project Structure --> Projects
+Here, assign the JDK as 'Project JDK' - to apply to all modules
+
+- AT MODULE LEVEL
+File --> Project Structure --> Modules
+Then, for each module check if SDK is assigned and assign JDK (or Kotlin SDK and such as needed)
+
+======================================================
+GRADLE PROJECT STRUCTURE
+======================================================
+https://docs.gradle.org/current/userguide/groovy_plugin.html
+
+Usage
+To use the Groovy plugin, include the following in your build script:
+
+Example 1. Using the Groovy plugin
+
+build.gradle
+plugins {
+    id 'groovy'
+}
+
+Tasks
+The Groovy plugin adds the following tasks to the project. Information about altering the dependencies to Java compile tasks are found here.
+
+compileGroovy — GroovyCompile
+Depends on: compileJava
+
+Compiles production Groovy source files.
+
+compileTestGroovy — GroovyCompile
+Depends on: compileTestJava
+
+Compiles test Groovy source files.
+
+compileSourceSetGroovy — GroovyCompile
+Depends on: compileSourceSetJava
+
+Compiles the given source set’s Groovy source files.
+
+groovydoc — Groovydoc
+Generates API documentation for the production Groovy source files.
+
+The Groovy plugin adds the following dependencies to tasks added by the Java plugin.
+
+Table 1. Groovy plugin - additional task dependencies
+Task name	Depends on
+classes
+
+compileGroovy
+
+testClasses
+
+compileTestGroovy
+
+sourceSetClasses
+
+compileSourceSetGroovy
+
+Project layout
+The Groovy plugin assumes the project layout shown in Groovy Layout. All the Groovy source directories can contain Groovy and Java code. The Java source directories may only contain Java source code.[1] None of these directories need to exist or have anything in them; the Groovy plugin will simply compile whatever it finds.
+
+src/main/java
+Production Java source.
+
+src/main/resources
+Production resources, such as XML and properties files.
+
+src/main/groovy
+Production Groovy source. May also contain Java source files for joint compilation.
+
+src/test/java
+Test Java source.
+
+src/test/resources
+Test resources.
+
+src/test/groovy
+Test Groovy source. May also contain Java source files for joint compilation.
+
+src/sourceSet/java
+Java source for the source set named sourceSet.
+
+src/sourceSet/resources
+Resources for the source set named sourceSet.
+
+src/sourceSet/groovy
+Groovy source files for the given source set. May also contain Java source files for joint compilation.
+
+Changing the project layout
+Just like the Java plugin, the Groovy plugin allows you to configure custom locations for Groovy production and test source files.
+
+Example 2. Custom Groovy source layout
+
+GroovyKotlin
+build.gradle
+sourceSets {
+    main {
+        groovy {
+            srcDirs = ['src/groovy']
+        }
+    }
+
+    test {
+        groovy {
+            srcDirs = ['test/groovy']
+        }
+    }
+}
+
+======================================================
+HELLO WORLD - IN PACKAGE 'hello' (not com.gm.hello)
+======================================================
+
+Right click 'hello' --> new --> Groovy Script (this option is somewhere at the bottom)
+Create the file HelloWorld.groovy
+It adds 'package hello' at the top of the code
+
+Type in the code:
+
+package hello
+
+println "hello groovy"
+
+Right click the file and choose 'Run HelloWorld'
+It compiles/builds and then runs and shows message at a new bottom pane:
+  /Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home/bin/java -
+  hello groovy
+
+  Process finished with exit code 0
+
+- MORE HELLO CODE
+https://www.logicbig.com/tutorials/misc/groovy/data-type-and-variables.html
+
+NOTE: Variables declared with def are local, so they cannot be accessed across methods:
+        src/DefExample2.groovy
+        def a = 2
+        void printVars() {
+            println a;
+        }
+        printVars();
+        --> This will throw error:
+        Caught: groovy.lang.MissingPropertyException: No such property: a for class: DefExample2
+        groovy.lang.MissingPropertyException: No such property: a for class: DefExample2
+
+Our code:
+
+package hello
+
+println "hello groovy"
+
+greetingNoDef = "hello groovy noDef"
+println greetingNoDef
+
+def greetingDef = "hello groovy Def"
+println greetingDef
+
+def a = 2
+printf "%s - %s%n", a.getClass().getName(), a
+
+a = "hi"
+printf "%s - %s%n", a.getClass().getName(), a
+
+b = 2
+printf "%s - %s%n", b.getClass().getName(), b
+
+b = "hi"
+printf "%s - %s%n", b.getClass().getName(), b
+
+Output:
+
+hello groovy
+hello groovy noDef
+hello groovy Def
+java.lang.Integer - 2
+java.lang.String - hi
+java.lang.Integer - 2
+java.lang.String - hi
+
+Process finished with exit code 0
+
+====================================================================================
+HELLO WORLD - IN PACKAGE com.gm.hello - and called in package hello
+====================================================================================
+
+

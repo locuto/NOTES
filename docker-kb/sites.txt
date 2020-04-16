@@ -1,0 +1,86 @@
+Cheat sheet: https://github.com/wsargent/docker-cheat-sheet
+
+https://blog.talpor.com/2015/01/docker-beginners-tutorial/ - very nice intro on concepts also
+https://docs.docker.com/engine/tutorials/usingdocker/ - go through this
+https://linuxcontainers.org/ - Linux containers
+
+Overview - http://www.troubleshooters.com/linux/docker/docker_newbie.htm
+
+Very good tutorial: https://www.digitalocean.com/community/tutorials/how-to-install-and-use-docker-on-centos-7
+
+https://www.digitalocean.com/community/tags/docker?type=tutorials - many tutorials
+https://www.digitalocean.com/community/tutorials/the-docker-ecosystem-an-introduction-to-common-components
+
+How to create images using Dockerfile:
+https://www.sitepoint.com/how-to-build-an-image-with-the-dockerfile/
+https://www.howtoforge.com/tutorial/how-to-create-docker-images-with-dockerfile/
+(some hints - http://phusion.github.io/baseimage-docker/)
+https://www.ianlewis.org/en/creating-smaller-docker-images
+http://developers.redhat.com/blog/2016/03/09/more-about-docker-images-size/
+https://www.dajobe.org/blog/2015/04/18/making-debian-docker-images-smaller/ (use with caution)
+
+Dockerize specific apps: many more in the left hand pane of the following:
+https://docs.docker.com/engine/examples/mongodb/
+https://docs.docker.com/engine/examples/postgresql_service/  and https://hub.docker.com/_/postgres/ --> read both
+
+Building images from running machines:
+http://linoxide.com/linux-how-to/2-ways-create-docker-base-image/ (from SCRATCH, debootstrap)
+  --> try this along with http://www.thegeekstuff.com/2010/01/debootstrap-minimal-debian-ubuntu-installation
+  
+https://docs.docker.com/engine/tutorials/dockerimages/
+https://docs.docker.com/engine/userguide/eng-image/baseimages/ (from SCRATCH, debootstrap)
+
+https://github.com/docker/docker/blob/master/contrib/mkimage.sh
+
+Debootstrap:
+https://wiki.debian.org/Debootstrap
+http://www.thegeekstuff.com/2010/01/debootstrap-minimal-debian-ubuntu-installation/ --> try this 
+
+Opening a port of the container:
+https://forums.docker.com/t/how-to-expose-port-on-running-container/3252/12
+https://docs.docker.com/config/containers/container-networking/
+
+SSH service:
+https://github.com/docker/docker.github.io/blob/master/engine/examples/running_ssh_service.md
+https://docs.docker.com/engine/examples/running_ssh_service/
+
+Postgres service:
+https://docs.docker.com/engine/examples/postgresql_service/
+
+Connect to docker container:
+http://askubuntu.com/questions/505506/how-to-get-bash-or-ssh-into-a-running-container-in-background-mode
+
+Creating new image from a running container: (to save changes done to a container)
+http://stackoverflow.com/questions/19335444/how-to-assign-a-port-mapping-to-an-existing-docker-container
+
+Cleanup/remove images/containers:
+http://blog.yohanliyanage.com/2015/05/docker-clean-up-after-yourself/
+
+SSL/TLS/HTTPS:
+https://docs.docker.com/registry/insecure/#using-self-signed-certificates
+
+EXAMPLE SERVERS:
+https://docs.docker.com/engine/examples/running_redis_service/#create-your-web-application-container
+
+SWARM WITH CONSUL
+http://clusterhq.com/2016/03/09/fun-with-swarm-part1/#setting-up-a-swarm-cluster-with-consul
+
+USING PRIVATE REGISTRIES:
+Very good - with how to provide credentials and such 
+- https://mesosphere.github.io/marathon/docs/native-docker-private-registry.html
+Pulling from private registries (also in the context of Kubernetes) 
+- https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+Creating - https://code-maze.com/docker-hub-vs-creating-docker-registry/
+
+TBD:
+EE, SHIM ETC - https://blogs.oracle.com/linux/dtrace-a-docker-container
+
+CONTAINERD, SHIM ETC - https://hackernoon.com/docker-containerd-standalone-runtimes-heres-what-you-should-know-b834ef155426
+-rwxr-xr-x. 1 root root 33251768 Mar 21  2018 docker
+-rwxr-xr-x. 1 root root 22770712 Mar 21  2018 docker-containerd
+-rwxr-xr-x. 1 root root 18406680 Mar 21  2018 docker-containerd-ctr
+-rwxr-xr-x. 1 root root  4324256 Mar 21  2018 docker-containerd-shim
+-rwxr-xr-x. 1 root root 67338096 Mar 21  2018 dockerd
+-rwxr-xr-x. 1 root root   824568 Mar 21  2018 docker-init
+-rwxr-xr-x. 1 root root  2425808 Mar 21  2018 docker-proxy
+-rwxr-xr-x. 1 root root  7706704 Mar 21  2018 docker-runc

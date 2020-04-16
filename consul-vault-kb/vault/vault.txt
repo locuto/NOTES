@@ -1,0 +1,110 @@
+===============
+HASHICORP VAULT
+===============
+
+Install/deploy - https://learn.hashicorp.com/vault/getting-started/deploy
+HA cluster - concept - https://www.vaultproject.io/docs/concepts/ha.html
+HA cluster with consul - how to - https://learn.hashicorp.com/vault/operations/ops-vault-ha-consul
+
+Create own CA in vault - https://learn.hashicorp.com/vault/secrets-management/sm-pki-engine
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Consul/vault HA architecture - https://learn.hashicorp.com/vault/operations/ops-reference-architecture
+Secrets engine - https://learn.hashicorp.com/vault/getting-started/secrets-engines
+Concepts - https://www.vaultproject.io/docs/concepts/
+Storage options - https://www.vaultproject.io/docs/configuration/storage/index.html
+Storage options decision tree - https://www.greenreedtech.com/hashicorp-vault-storage-backend-decision-tree/
+                  (f/s non-ha, etcd are supported by hashicorp)
+                  
+Storage option file - https://devopscube.com/setup-hashicorp-vault-beginners-guide/
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Issues:
+https://github.com/hashicorp/vault/issues/1147
+
+===============
+INSTALL
+===============
+
+- First create a consul (see other doc TBD)
+
+- Install vault - download and zip 'vault' into /usr/local/bin
+
+Configure: /etc/vault.d/config.hcl
+NOTE: Consul section is for the consul you have created
+NOTE: The addresses for the listener is given as 0.0.0.0 --> it may be security risk
+
+storage "consul" {
+  address = "110.192.217.4:8500"
+  path    = "vault/"
+  scheme  = "http"
+}
+
+listener "tcp" {
+ address          = "0.0.0.0:8200"
+ cluster_address  = "0.0.0.0:8201"
+ tls_disable = "true"
+  scheme  = "http"
+}
+
+--- OLD CONFIG FILE
+storage "consul" {
+  address = "101.192.217.4:8500"
+  path    = "vault/"
+  scheme  = "http"
+}
+
+listener "tcp" {
+ address     = "127.0.0.1:8200"
+ # using actual IP is giving problem while accessing or unsealing vault
+ #address     = "10.92.217.4:8200"
+ tls_disable = 1
+  scheme  = "http"
+}
+
+- Start Vault
+NOTE: Run it in 'nohup' or create a systemd service
+
+NOTE: Need to set environment variable to point to http address - to use http instead of https
+      Otherwise, the vault client will he https and consul MAY BE http and if so, then you get the following error
+      Error unsealing: Put https://127.0.0.1:8200/v1/sys/unseal: http: server gave HTTP response to HTTPS client
+        https://github.com/hashicorp/vault/issues/1147
+        
+# export VAULT_ADDR=http://127.0.0.1:8200
+# vault server -config=/etc/vault.d/config.hcl 
+
+Now, you can see vault in consul
+
+- Initialize
+# vault operator init
+Unseal Key 1: axNHQL7sdfsdfskkaGbUJ7BLLBE9KuigR+zx+flsdfpuEVhIaZJ/POy
+Unseal Key 2: nJXwnD0ffQ8UQEkESVYsdfsdfmAQnv1LRDLSOq0+n1y+K+Md+Vh
+Unseal Key 3: pzBvR0Leny5d+dzGqsdfsdyTW97xVyuYCcMonLfXsdfdsryjVQy2kq
+Unseal Key 4: znTqCsFkAcv+jyysdfsdf+eRAdJY3V8EbLvOHwtr/c+I5t7wf//
+Unseal Key 5: UUygBAtZX6dmfYCysdfsdfpR/1lPkt+lhNXMROoRE3QE0JPaEk7
+
+Initial Root Token: 26TIbLMsdfs5CCRMX7XQ6UqxcfyhY
+
+Also, note down the token in the file /root/.vault-token
+6cL8ns3msdfsd9dSRIVXJFx0lhF8q
+
+- Unseal the vault (must be done upon vault or server restart)
+NOTE: Do this 'unseal' three times (minimum) and give a different unseal key each time
+
+# vault operator unseal
+
+Now you can see vault in unsealed state in consul
+
+=================
+HA CLUSTER
+=================
+HA cluster is formed by registering more nodes with the SAME CONSUL.
+
+On more nodes:
+Repeat the steps of install/config - EXCEPT INITIALIZE
+DO NOT RUN 'vault operator init'
+
+=================
+ACCESS VAULT
+=================
+Just access consul on webui - and look for vault in it

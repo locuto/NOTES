@@ -1,0 +1,195 @@
+==========================================
+DOCKER REGISTRY - CREATE A LOCAL REGISTRY
+==========================================
+
+This did not work: http://www.macadamian.com/2017/02/07/creating-a-private-docker-registry/
+
+=====================
+CREATE LOCAL REGISTRY
+=====================
+Use this, with some modification:  https://docs.docker.com/registry/#basic-commands
+and https://rominirani.com/docker-tutorial-series-part-6-docker-private-registry-15d1fd899255
+
+ALSO SEE
+https://code-maze.com/docker-hub-vs-creating-docker-registry/
+https://blog.docker.com/2013/07/how-to-use-your-own-registry/
+
+- PULL THE 'REGISTRY' IMAGE ITSELF
+Note: A docker image that provides a registry is available - pull it and run registry as a docker container locally
+
+$ docker pull registry:2
+2: Pulling from library/registry
+d6a5679aa3cf: Pull complete 
+ad0eac849f8f: Pull complete 
+2261ba058a15: Pull complete 
+f296fda86f10: Pull complete 
+bcd4a541795b: Pull complete 
+Digest: sha256:5a156ff125e5a12ac7fdec2b90b7e2ae5120fa249cf62248337b6d04abc574c8
+Status: Downloaded newer image for registry:2
+
+- Start your registry
+
+$ docker run -d -p 5000:5000 --name registry registry:2
+883a5fa4c34c9d2d8c44b45652765e5117a08c5b6eb1e4aba82ebc6a67a4f397
+
+URL in browser will show this:
+
+http://localhost:5000/v2/_catalog
+
+{"repositories":[]}
+
+- Verify
+$ docker ps
+CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS              PORTS                    NAMES
+883a5fa4c34c        registry:2          "/entrypoint.sh /etc…"   3 seconds ago       Up 2 seconds        0.0.0.0:5000->5000/tcp   registry
+
+$ docker images
+REPOSITORY               TAG                 IMAGE ID            CREATED             SIZE
+cassandrasingle/centos   1.0                 8994386cdefb        25 hours ago        703MB
+redis                    latest              0a153379a539        10 days ago         83.4MB
+registry                 2                   2e2f252f3c88        4 weeks ago         33.3MB
+centos/systemd           latest              78c36a71df7e        2 months ago        200MB
+
+- TAG AN EXISTING CREATED/PULLED IMAGE TO THE LOCAL REGISTRY
+
+$ docker image tag cassandrasingle/centos localhost:5000/cassandrasingle
+Error response from daemon: No such image: cassandrasingle/centos:latest
+
+$ docker image tag cassandrasingle/centos:1.0 localhost:5000/cassandrasingle
+
+$ docker images
+REPOSITORY                       TAG                 IMAGE ID            CREATED             SIZE
+localhost:5000/cassandrasingle   latest              8994386cdefb        25 hours ago        703MB
+cassandrasingle/centos           1.0                 8994386cdefb        25 hours ago        703MB
+redis                            latest              0a153379a539        10 days ago         83.4MB
+registry                         2                   2e2f252f3c88        4 weeks ago         33.3MB
+centos/systemd                   latest              78c36a71df7e        2 months ago        200MB
+
+- UNTAG IT
+$ docker image rm localhost:5000/cassandrasingle
+Untagged: localhost:5000/cassandrasingle:latest
+
+$ docker images
+REPOSITORY               TAG                 IMAGE ID            CREATED             SIZE
+cassandrasingle/centos   1.0                 8994386cdefb        25 hours ago        703MB
+redis                    latest              0a153379a539        10 days ago         83.4MB
+registry                 2                   2e2f252f3c88        4 weeks ago         33.3MB
+centos/systemd           latest              78c36a71df7e        2 months ago        200MB
+
+- TAG IT WITH A VERSION (when did without a version, it tagged as 'latest')
+$ docker image tag cassandrasingle/centos:1.0 localhost:5000/cassandrasingle:1.0
+
+$ docker images
+REPOSITORY                       TAG                 IMAGE ID            CREATED             SIZE
+cassandrasingle/centos           1.0                 8994386cdefb        25 hours ago        703MB
+localhost:5000/cassandrasingle   1.0                 8994386cdefb        25 hours ago        703MB
+redis                            latest              0a153379a539        10 days ago         83.4MB
+registry                         2                   2e2f252f3c88        4 weeks ago         33.3MB
+centos/systemd                   latest              78c36a71df7e        2 months ago        200MB
+
+- PUSH IT TO THE LOCAL REPO
+NOTE: In this example, used 'redis' instead of 'cassandrasingle'
+
+$ docker push localhost:5000/redis:local
+The push refers to repository [localhost:5000/redis]
+902afb26cfff: Pushed 
+21497520b817: Pushed 
+a3514b4102be: Pushed 
+714e32c05337: Pushed 
+d98fb630fb3b: Pushed 
+8b15606a9e3e: Pushed 
+
+local: digest: sha256:96be1b5b6e4fe74dfe65b2b52a0fee254c443184b34fe448f3b3498a512db99e size: 1571
+$ docker images
+REPOSITORY                       TAG                 IMAGE ID            CREATED             SIZE
+cassandrasingle/centos           1.0                 8994386cdefb        25 hours ago        703MB
+localhost:5000/cassandrasingle   1.0                 8994386cdefb        25 hours ago        703MB
+redis                            latest              0a153379a539        10 days ago         83.4MB
+localhost:5000/redis             local               0a153379a539        10 days ago         83.4MB
+registry                         2                   2e2f252f3c88        4 weeks ago         33.3MB
+centos/systemd                   latest              78c36a71df7e        2 months ago        200MB
+
+- TAG ANOTHER ONE AND PUSH
+
+- get one from public registry
+
+$ docker pull redis
+Using default tag: latest
+latest: Pulling from library/redis
+
+$ docker images
+REPOSITORY                       TAG                 IMAGE ID            CREATED             SIZE
+cassandrasingle/centos           1.0                 8994386cdefb        26 hours ago        703MB
+centos/systemd                   latest              78c36a71df7e        2 months ago        200MB
+registry                         2                   2e2f252f3c88        4 weeks ago         33.3MB
+redis                            latest              0a153379a539        10 days ago         83.4MB
+
+- tag it to local registry
+$ docker images
+REPOSITORY               TAG                 IMAGE ID            CREATED             SIZE
+cassandrasingle/centos   1.0                 8994386cdefb        26 hours ago        703MB
+redis                    latest              0a153379a539        10 days ago         83.4MB
+registry                 2                   2e2f252f3c88        4 weeks ago         33.3MB
+centos/systemd           latest              78c36a71df7e        2 months ago        200MB
+
+$ docker image tag redis:latest localhost:5000/redislocal
+
+$ docker images
+REPOSITORY                  TAG                 IMAGE ID            CREATED             SIZE
+cassandrasingle/centos      1.0                 8994386cdefb        26 hours ago        703MB
+redis                       latest              0a153379a539        10 days ago         83.4MB
+localhost:5000/redislocal   latest              0a153379a539        10 days ago         83.4MB
+registry                    2                   2e2f252f3c88        4 weeks ago         33.3MB
+centos/systemd              latest              78c36a71df7e        2 months ago        200MB
+
+At this time, the URL will not show any new entries in the repositories:
+http://localhost:5000/v2/_catalog
+{"repositories":[]}
+
+- push it
+$ docker push localhost:5000/redislocal
+
+Now the URL will show new repo:
+http://localhost:5000/v2/_catalog
+{"repositories":["redislocal"]}
+
+================================
+TROUBLESHOOTING IN MINIKUBE
+================================
+But, pulling it into minikube was failing - as http response came instead of https
+https://stackoverflow.com/questions/38695515/can-not-pull-push-images-after-update-docker-to-1-12#38716311
+--> but, doing that and restarting minikube wiped out the changes in minikube done per this article
+
+Try this:  
+REG_IP and REG_PORT are the IP and exposed port of the host that has the registry 
+(the registry itself is a docker image whose port should be mapped to a port of the hosting machine)
+
+      $ minikube delete
+      $ minikube start --vm-driver="virtualbox" --insecure-registry="$REG_IP":"$REG_PORT"
+      from: https://stackoverflow.com/questions/38979231/imagepullbackoff-local-repository-with-minikube#39331429
+      and https://github.com/kubernetes/minikube/issues/604
+
+      https://stackoverflow.com/questions/40160363/pulling-image-from-local-docker-repository
+      https://stackoverflow.com/questions/38979231/imagepullbackoff-local-repository-with-minikube
+
+- ACTUAL STEPS
+$ minikube delete
+
+$ minikube start --insecure-registry=192.168.10.153:5000
+Starting local Kubernetes v1.10.0 cluster...
+Starting VM...
+
+$ kubectl run redis --image=192.168.0.53:5000/redislocal --port=6379
+
+======================
+REMOVE LOCAL REGISTRY
+======================
+
+$ docker container stop registry
+registry
+
+$ docker container rm -v registry
+registry
+
+$ docker ps
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES

@@ -1,0 +1,100 @@
+GOOD ARCHIRECTURE, DESIGN, DEPLOY:
+https://sysdig.com/blog/kubernetes-monitoring-prometheus/
+https://docs.mesosphere.com/services/prometheus/0.1.1-2.3.2/release-notes/ --> Good overview of concepts, install, config
+
+CHANGELOG
+https://github.com/prometheus/prometheus/blob/master/CHANGELOG.md
+
+SETUP SERVER/CENTOS MONITORING
+https://mclarenappliedtechnologies.zendesk.com/hc/en-us/articles/360008182953-Setting-up-Infrastructure-Monitoring-with-Prometheus-and-Grafana
+https://vexxhost.com/resources/tutorials/how-to-use-prometheus-to-monitor-your-centos-7-server/
+
+MONITORING SERVICES
+https://groups.google.com/forum/#!topic/prometheus-users/Y2htzgG9FjM (mentions textfile exporter)
+--> https://www.robustperception.io/checking-if-ssh-is-responding-with-prometheus/ --> blackbox exporter
+
+TUTORIAL
+https://devopscube.com/setup-prometheus-monitoring-on-kubernetes/
+--> alert manager - https://devopscube.com/alert-manager-kubernetes-guide/
+
+https://dzone.com/articles/monitoring-with-prometheus
+https://www.weave.works/docs/cloud/latest/tasks/monitor/configuration-k8s/ --> talks about scraping metrics
+
+Prometheus on Docker:  
+https://devconnected.com/how-to-install-prometheus-with-docker-on-ubuntu-18-04/
+Prometheus and Grafana:
+https://devconnected.com/how-to-setup-grafana-and-prometheus-on-linux
+Prometheus on Baremetal:
+https://devconnected.com/complete-node-exporter-mastery-with-prometheus/
+
+On Minikube
+https://github.com/bakins/minikube-prometheus-demo
+
+TROUBLESHOOTING:
+NODE, CONTAINER, ETCD and such metrics not showing up
+https://stackoverflow.com/questions/40281777/prometheus-in-docker-container-not-showing-all-metrics
+https://github.com/helm/charts/issues/8386
+
+HELM CHART
+https://github.com/helm/charts/tree/master/stable/prometheus
+
+ALERTMANAGER:
+https://itnext.io/prometheus-with-alertmanager-f2a1f7efabd6
+
+ALERTMANAGER-SLACK:
+https://harthoover.com/pretty-alertmanager-alerts-in-slack/
+https://www.robustperception.io/using-slack-with-the-alertmanager -- from scratch
+
+CONTAINER AND FS METRICS COLLECTION - CADVISOR (some metrics were not being collected - like container_spec_memory_limit_bytes, container_fs_inodes_free and many others. This was being collected though - container_fs_usage_bytes)
+https://indico.cern.ch/event/686369/contributions/2831892/attachments/1583821/2503461/Prometheus.pdf
+
+=== RUNNING LIST 2019
+PROMETHEUS CONFIGURATION
+Prometheus configs - https://prometheus.io/docs/prometheus/latest/configuration/configuration/
+<scrape_config>  - https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config
+<file_sd_config> - https://prometheus.io/docs/prometheus/latest/configuration/configuration/#<file_sd_config>
+<kubernetes_sd_config> - https://prometheus.io/docs/prometheus/latest/configuration/configuration/#%3Ckubernetes_sd_config%3E
+Relabel: https://blog.freshtracks.io/prometheus-relabel-rules-and-the-action-parameter-39c71959354a
+Federation: https://prometheus.io/docs/prometheus/latest/federation/
+Federation - config examples: https://banzaicloud.com/blog/prometheus-federation/
+
+Helm charts -
+https://github.com/helm/charts/tree/master/stable/prometheus
+
+EXPORTERS
+https://prometheus.io/docs/instrumenting/exporters/
+
+node exporter - https://github.com/prometheus/node_exporter (Node/system metrics exporter (official))
+- filesystem	Exposes filesystem statistics, such as disk space used.)
+- ntp	Exposes local NTP daemon health to check time	any
+- many metrics deducing - https://blog.freshtracks.io/a-deep-dive-into-kubernetes-metrics-part-2-c869581e9f29
+- https://www.robustperception.io/new-features-in-node-exporter-0-16-0
+
+blackbox exporter - 
+https://github.com/prometheus/blackbox_exporter
+https://github.com/prometheus/blackbox_exporter/blob/master/CONFIGURATION.md
+https://github.com/prometheus/blackbox_exporter/blob/master/example.yml
+https://www.robustperception.io/checking-for-http-200s-with-the-blackbox-exporter
+https://medium.com/the-telegraph-engineering/how-prometheus-and-the-blackbox-exporter-makes-monitoring-microservice-endpoints-easy-and-free-of-a986078912ee
+
+process exporter
+textfile exporter
+
+ALERTMANGER SAMPLE CONFIG FILE
+https://github.com/prometheus/alertmanager/blob/master/doc/examples/simple.yml
+
+POSSIBILITIES:
+Nodes not ready - kube state metrics -
+    https://github.com/kubernetes/kube-state-metrics/blob/master/docs/node-metrics.md (kube_node_status_condition)
+    
+Pod - ready, not ready, pending Crashloop backoff - kube-state-metrics -
+    https://github.com/kubernetes/kube-state-metrics/blob/master/docs/pod-metrics.md
+    
+Ingress - kube state metrics - 
+    https://github.com/kubernetes/kube-state-metrics/blob/master/docs/ingress-metrics.md
+
+Cronjob - kube state metrics -
+
+Query API
+- https://prometheus.io/docs/prometheus/latest/querying/api/
+- URL Encode for curl query - https://stackoverflow.com/questions/54134924/prometheus-query-and-api-call

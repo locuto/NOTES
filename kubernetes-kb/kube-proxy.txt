@@ -1,0 +1,20 @@
+====================
+KUBE-PROXY
+====================
+
+kube-proxy crash - what happens then:
+https://learnk8s.io/blog/kubernetes-chaos-engineering-lessons-learned/
+
+kube-proxy gets stuck if master is re-created:
+https://github.com/kubernetes/kubernetes/issues/56720
+
+Using custom image: 
+https://serverfault.com/questions/886718/using-private-image-to-start-kube-proxy
+
+Restarting:
+https://stackoverflow.com/questions/37634546/how-to-restart-kube-proxy-in-kubernetes-1-2-gke
+
+Daemonset - name kube-proxy
+RBAC - ClusterRoleBinding - name kube-proxy, roleRef: kind: ClusterRole name: system:node-proxier
+Service Account - name kube-proxy
+Configmap --> is one there?

@@ -1,0 +1,217 @@
+==========================
+K8S MODEL VM
+==========================
+
+Centos-7.6
+
+SOFTWARE SELECTION
+- Server with gui
+hardware monitoring utilities
+kde
+large system performance
+performance tools
+compat libraries
+development tools
+security tools
+system administration tools
+
+- KDE Desktop
+Choose similar libraries as in server
+==========================
+SYSTEM SETUP
+==========================
+--------------------------
+HOSTNAME AND IP ADDRESS
+--------------------------
+
+SET HOSTNAME
+# hostnamectl set-hostname centos7k8smodel
+
+ENABLE AN ADDITIONAL NETWORK CARD
+- shutdown the VM
+- in virtualbox - add 'network adapter' of type 'host only' (or bridged or intnet - whichever works)
+- choose 'connect automatically'
+
+SET IP ADDRESS
+- restart vm
+- In OEL, use network configuration menu clicking the button at top right corner
+- In CENTOS the network configuration menus are disabled somehow (though button exists shows the popup screen)
+NOTE - DO NOT CHANGE NAME Wired_connection_1 to enps08 and such
+-- use nmtui (network manager TUI) to configure a static IP address
+-- as in https://cloudcone.com/docs/article/how-to-configure-a-static-ip-address-on-linux/
+
+---------------------------------
+DISABLE SELINUX
+---------------------------------
+# setenforce 0
+
+Edit the file /etc/sysconfig/selinux and set enforcing as disabled
+
+---------------------------------
+DISABLE SWAP
+---------------------------------
+# swapoff -a
+
+Edit /etc/fstab and comment out line of swap
+#/dev/mapper/ol-swap     swap                    swap    defaults        0 0
+
+---------------------------------
+ENABLE br_netfilter
+---------------------------------
+# modprobe br_netfilter
+# echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables
+
+Also, put it in /etc/sysctl.conf (as in Oracle Linux) or /usr/lib/sysctl.d/00-system.conf (as in centos) as follows:
+net.bridge.bridge-nf-call-iptables = 1
+
+And, make it persistent:
+# sysctl -p
+
+---------------------------------
+SET rp_filter
+---------------------------------
+Calico-node keeps crashing:
+https://github.com/projectcalico/calico/issues/1806 --> mine
+https://success.docker.com/article/fix-ucp-calico-for-rp-filter
+
+    --> This seemed to work
+    On host: in /etc/sysctl.conf (oracle linux) or /usr/lib/sysctl.d/50-default.conf 
+    set the rp_filter to 1 instead of 2  (in centos - it was already 1 - but ensure that it indeed is)
+    and then do "sysctl -p"
+
+==========================
+DOCKER INSTALL
+==========================
+Follow - NOTES/docker-kb/install-config-oel-2019.txt
+
+# docker info | grep -i cgroup
+ Cgroup Driver: cgroupfs
+
+==========================
+SOFTWARE INSTALL
+==========================
+----------------------------------------
+INSTALL CFSSL - TO GENERATE CERTIFICATES
+----------------------------------------
+MEHTOD 1
+
+https://blog.inkubate.io/deploy-kubernetes-1-9-from-scratch-on-vmware-vsphere/
+
+Installation of cfssl
+1- Download the binaries.
+
+$ wget https://pkg.cfssl.org/R1.2/cfssl_linux-amd64
+$ wget https://pkg.cfssl.org/R1.2/cfssljson_linux-amd64
+2- Add the execution permission to the binaries.
+
+$ chmod +x cfssl*
+3- Move the binaries to /usr/local/bin.
+
+$ sudo mv cfssl_linux-amd64 /usr/local/bin/cfssl
+$ sudo mv cfssljson_linux-amd64 /usr/local/bin/cfssljson
+4- Verify the installation.
+
+$ cfssl version
+
+METHOD 2
+https://gist.github.com/guoyoujin/376bda5323b1d718d8d582f2efa5a8e6
+
+source:    
+    https://pkg.cfssl.org/
+install:
+    $ curl -s -L -o /bin/cfssl https://pkg.cfssl.org/R1.2/cfssl_linux-amd64
+    $ curl -s -L -o /bin/cfssljson https://pkg.cfssl.org/R1.2/cfssljson_linux-amd64
+    $ curl -s -L -o /bin/cfssl-certinfo https://pkg.cfssl.org/R1.2/cfssl-certinfo_linux-amd64
+    $ chmod +x /bin/cfssl*
+    
+----------------------------------------
+INSTALL KUBEADM, KUBELET, KUBECTL
+----------------------------------------
+https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/
+
+- CREATE YUM REPO FILE
+https://www.linuxtechi.com/install-kubernetes-1-7-centos7-rhel7/
+https://www.howtoforge.com/tutorial/centos-kubernetes-docker-cluster/
+
+File - /etc/yum.repos.d/kubernetes.repo:
+
+cat <<EOF > /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+enabled=1
+gpgcheck=0
+repo_gpgcheck=0
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg 
+	https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+EOF
+
+- CHECK VERSIONS AVAILABLE
+yum --showduplicates list kubelet
+yum --showduplicates list kubectl
+yum --showduplicates list kubeadm
+
+- INSTALL KUBERNETES TOOLS
+NOTE: Ensure you install the correct versions for the versions of apiserver and such that you install
+(To install latest "yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes")
+
+# yum install -y kubelet-1.12.8-0
+# yum install -y kubectl-1.12.8-0
+# yum install -y kubeadm-1.12.8-0
+# maybe we should install kubernetes-cni also
+
+From http://raman-kumar.blogspot.com/2018/05/fixed-yum-fails-with-errno-14-curl60.html
+  Installing : kubectl-1.10.2-0.x86_64                                                                                                                   1/5
+  Installing : socat-1.7.3.2-2.el7.x86_64                                                                                                                2/5
+  Installing : kubelet-1.10.2-0.x86_64                                                                                                                   3/5
+  Installing : kubernetes-cni-0.6.0-0.x86_64                                                                                                             4/5
+  Installing : kubeadm-1.10.2-0.x86_64  
+
+===============================================
+PULL DOCKER IMAGES - FOR KUBERNETES 12.8
+===============================================
+- ETCD
+etcd - 3.2.24
+
+docker pull quay.io/coreos/etcd:v3.2.24
+
+- KUBERNETES - v1.12.8 
+kube-apiserver-amd64
+kube-controller-manager-amd64
+kube-scheduler-amd64
+kube-proxy-amd64 
+pause-amd64 3.1 ((https://console.cloud.google.com/gcr/images/google-containers/GLOBAL/pause-amd64?gcrImageListsize=30))
+
+docker pull gcr.io/google_containers/kube-apiserver-amd64:v1.12.8
+docker pull gcr.io/google_containers/kube-scheduler-amd64:v1.12.8 
+docker pull gcr.io/google_containers/kube-controller-manager-amd64:v1.12.8
+docker pull gcr.io/google_containers/kube-proxy-amd64:v1.12.8
+docker pull k8s.gcr.io/pause-amd64:3.1 
+
+docker pull k8s.gcr.io/k8s-dns-kube-dns:1.14.13
+docker pull k8s.gcr.io/k8s-dns-dnsmasq-nanny:1.14.13
+docker pull k8s.gcr.io/k8s-dns-sidecar:1.14.13
+
+docker pull quay.io/coreos/flannel:v0.9.0-amd64 --> being used in store with kubernetes 1.12.8
+docker pull quay.io/coreos/flannel:v0.11.0-amd64 --> latest as in kube-flannel.yml (see notes below)
+
+- FLANNEL NOTES
+Flannel (as in store with 1.12.8 kubernetes)
+	flannel v0.9.0-amd64   
+	
+https://quay.io/repository/coreos/flannel?tab=tags (repo - click the download icon next to the version to get pull command)
+https://coreos.com/flannel/docs/latest/kubernetes.html
+https://github.com/coreos/flannel/
+https://github.com/coreos/flannel/blob/master/Documentation/kubernetes.md
+
+Deploying flannel manually (https://github.com/coreos/flannel/)
+Flannel can be added to any existing Kubernetes cluster 
+though it's simplest to add flannel before any pods using the pod network have been started.
+
+For Kubernetes v1.7+ 
+kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+
+- CALICO NOTES
+Use the steps in default-method/***calico***v3.txt
+https://docs.projectcalico.org/v3.4/getting-started/kubernetes/installation/hosted/calico.yaml
+Also reference: https://docs.projectcalico.org/v2.6/getting-started/docker/installation/manual

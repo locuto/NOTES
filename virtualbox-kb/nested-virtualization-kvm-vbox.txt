@@ -1,0 +1,108 @@
+====================================
+NESTED VIRTUALIZATION IN VIRTUALBOX
+====================================
+Nested virtualization is available on Intel from 6.1 version onwards
+- https://www.virtualbox.org/ticket/4032
+
+User Manual page
+- https://www.virtualbox.org/manual/ch09.html#nested-virt
+
+NOTE: The GUI step from the manual is still greyed out - so use vboxmanage command
+
+From the manual: https://www.virtualbox.org/manual/ch09.html#nested-virt
+    You can enable the nested virtualization feature in one of the following ways:
+    
+    1. For a VM - from the VirtualBox Manager, in the "Processor" tab - select the "Enable Nested VT-x/AMD-V" check box.
+       To disable the feature, deselect the check box.
+    (NOTE: This step does not work - as the checkbox is greyed out.  So, use vboxmanage command given next)
+
+    2. Use the --nested-hw-virt option of the VBoxManage modifyvm command to enable or disable nested virtualization. 
+       See Section 8.8, “VBoxManage modifyvm”.
+       
+       VBoxManage modifyvm "vm-name" --nested-hw-virt on
+
+====================================
+ENABLE NESTED VIRTUALIZATION
+====================================
+
+Create/clone a machine
+
+Then set these:
+vboxmanage modifyvm kvm01 --nestedpaging on --> This is necessary also
+vboxmanage modifyvm kvm01 --nested-hw-virt on  --> If nestedpagin is missed, in gui system->processor - respond to prompt
+
+$ sysctl -a | grep machdep.cpu.features
+machdep.cpu.features: FPU VME DE PSE TSC MSR PAE MCE CX8 APIC SEP MTRR PGE MCA CMOV PAT PSE36 CLFSH DS ACPI MMX FXSR SSE SSE2 SS HTT TM PBE SSE3 PCLMULQDQ DTES64 MON DSCPL VMX EST TM2 SSSE3 FMA CX16 TPR PDCM SSE4.1 SSE4.2 x2APIC MOVBE POPCNT AES PCID XSAVE OSXSAVE SEGLIM64 TSCTMR AVX1.0 RDRAND F16C
+
+$ VBoxManage modifyvm "vm-name" --nested-hw-virt on
+
+============================
+INSTALL KVM, QEMU 
+============================
+
+For full and extended documentation go to this:
+- New doc: https://github.com/coderdba/NOTES/blob/master/kvm-kb/install-kvm-qemu-virt-on-Centos7.txt
+
+Old doc https://github.com/coderdba/NOTES/blob/master/packer-kb/install-on-centos-and-kvm.txt
+Main reference - https://www.linuxtechi.com/install-kvm-hypervisor-on-centos-7-and-rhel-7/
+
+Additional stuff:
+https://www.linuxquestions.org/questions/linux-laptop-and-netbook-25/how-do-you-kvm-on-vmware-virtualbox-4175611275/
+--> about vbox not supporting further virtualization on a vm
+
+
+--> THIS IS NOW DOCUMENTED NOW IN https://github.com/coderdba/NOTES/blob/master/kvm-kb/install-kvm-qemu-virt-on-Centos7.txt
+Check if CPU supports virtualization
+NOTE: Virtualbox VM did not show vmx/svm - still, will give a try
+# grep -E '(vmx|svm)' /proc/cpuinfo
+We should get the word either vmx or svm in the output, otherwise CPU doesn’t support virtualization.
+--> you can see vmx now!!
+flags		: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc eagerfpu pni pclmulqdq monitor vmx ssse3 cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt aes xsave avx rdrand hypervisor lahf_lm abm 3dnowprefetch tpr_shadow flexpriority fsgsbase avx2 invpcid rdseed clflushopt flush_l1d
+
+Install packages
+# yum install qemu-kvm qemu-img virt-manager libvirt libvirt-python libvirt-client virt-install virt-viewer bridge-utils
+
+Verify modules
+# lsmod | grep kvm
+Expected output:
+kvm_intel             183621  0 
+kvm                   586948  1 kvm_intel
+irqbypass              13503  1 kvm
+
+--> If desired output does not appear, then run the following and try again:
+# modprobe kvm
+# modprobe kvm-intel or kvm-amd(depends on your cpu)
+
+Start service
+
+# systemctl enable libvirtd
+# systemctl start libvirtd
+# systemctl status libvirtd
+● libvirtd.service - Virtualization daemon
+   Loaded: loaded (/usr/lib/systemd/system/libvirtd.service; enabled; vendor preset: enabled)
+   Active: active (running) since Tue 2020-02-18 21:22:44 IST; 13h ago
+     Docs: man:libvirtd(8)
+           https://libvirt.org
+ Main PID: 5660 (libvirtd)
+    Tasks: 19 (limit: 32768)
+   CGroup: /system.slice/libvirtd.service
+           ├─3904 /usr/sbin/dnsmasq --conf-file=/var/lib/libvirt/dnsmasq/default.conf --leasefile-ro --dhcp-script=/u...
+           ├─3906 /usr/sbin/dnsmasq --conf-file=/var/lib/libvirt/dnsmasq/default.conf --leasefile-ro --dhcp-script=/u...
+           └─5660 /usr/sbin/libvirtd
+
+Feb 19 10:02:16 centos7model-server dnsmasq[3904]: using nameserver 10.0.2.3#53
+Feb 19 10:02:28 centos7model-server dnsmasq[3904]: reading /etc/resolv.conf
+Feb 19 10:02:28 centos7model-server dnsmasq[3904]: using nameserver 192.168.255.104#53
+Feb 19 10:02:28 centos7model-server dnsmasq[3904]: using nameserver 192.168.255.136#53
+Feb 19 10:02:38 centos7model-server dnsmasq[3904]: reading /etc/resolv.conf
+Feb 19 10:02:38 centos7model-server dnsmasq[3904]: using nameserver 10.0.2.3#53
+Feb 19 10:02:46 centos7model-server dnsmasq[3904]: reading /etc/resolv.conf
+Feb 19 10:02:46 centos7model-server dnsmasq[3904]: using nameserver 10.92.224.227#53
+Feb 19 10:02:46 centos7model-server dnsmasq[3904]: using nameserver 10.97.40.216#53
+Feb 19 10:02:46 centos7model-server dnsmasq[3904]: using nameserver 10.64.40.216#53
+
+Install X-Windows system
+# yum install "@X Window System" xorg-x11-xauth xorg-x11-fonts-* xorg-x11-utils -y
+
+Start virt-manager - for GUI based VM creation
+# virt-manager
